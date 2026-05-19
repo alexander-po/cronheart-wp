@@ -9,15 +9,16 @@ use PHPUnit\Framework\TestCase;
 
 final class PluginTest extends TestCase
 {
-    public function test_plugin_class_can_be_instantiated_and_booted(): void
+    public function test_plugin_class_is_constructible_without_wp_runtime(): void
     {
-        // Smoke test for the scaffold: prove the PSR-4 autoloader
-        // resolves our namespace and the bootstrap class is loadable
-        // without a WordPress runtime. Real behaviour tests land in
-        // the heartbeat / per-event / admin commits.
+        // Bootstrap class itself is side-effect free at construction —
+        // hook registration happens in `boot()`, which the runtime
+        // call in `cronheart.php` invokes after WordPress functions
+        // are available. The integration smoke test that exercises
+        // the full `boot()` chain lives in the v0.1.0 release
+        // verification (commit 5) against a real WP install.
         $plugin = new Plugin();
-        $plugin->boot();
 
-        $this->expectNotToPerformAssertions();
+        self::assertInstanceOf(Plugin::class, $plugin);
     }
 }

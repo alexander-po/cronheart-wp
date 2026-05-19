@@ -3,12 +3,17 @@ parameters:
     paths:
         - src
         - tests
-    # Later commits will reach into WordPress core (`add_action`,
-    # `wp_schedule_event`, `current_user_can`, …) which PHPStan cannot
-    # see at static-analysis time. When that happens we will add a
-    # hand-maintained stub file under `tests/stubs/wordpress.php` (kept
-    # narrow on purpose — `szepeviktor/phpstan-wordpress` carries
-    # ~1500 stubs and a large transitive dev surface we do not want).
-    # The scaffold's `Plugin` class touches none of those yet, so the
-    # stub is omitted for this commit.
+    excludePaths:
+        # The stub file lives in `tests/stubs/` but is consumed via
+        # `scanFiles` below — analysing its function bodies (intentional
+        # no-ops) would report unused-parameter errors that have no
+        # bearing on the runtime behaviour we care about.
+        - tests/stubs/wordpress.php
+    # WordPress core symbols this plugin touches (`add_action`,
+    # `wp_schedule_event`, `apply_filters`, …) are not on the
+    # classpath at static-analysis time. The stub file declares just
+    # the handful we reach for; it is never included at runtime
+    # because the test bootstrap requires only `vendor/autoload.php`.
+    scanFiles:
+        - tests/stubs/wordpress.php
     treatPhpDocTypesAsCertain: false
