@@ -90,4 +90,9 @@ namespace {
     function register_deactivation_hook(string $file, callable $callback)
     {
     }
+
+    function current_action(): string|false
+    {
+        return false;
+    }
 }

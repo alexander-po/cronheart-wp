@@ -91,6 +91,49 @@ final class Resolver
         return null;
     }
 
+    /**
+     * Returns the de-duplicated list of hook names that should be
+     * instrumented. Drawn from the union of:
+     *   - keys of the `cronheart_event_map` option (admin UI);
+     *   - keys of the `cronheart_monitor_map` filter (set by
+     *     `cronheart_monitor()` calls and any direct
+     *     `add_filter('cronheart_monitor_map', …)` usage).
+     *
+     * **Note:** `CRONHEART_EVENT_<HOOK>_UUID` constants are not a
+     * source of hook names here. PHP cannot enumerate user-defined
+     * constants by prefix without `get_defined_constants()`, which
+     * is too heavy for a boot path. A constant supplies the UUID
+     * *value* for a hook that is already registered via the option
+     * or the filter (the resolver still walks the constant-first
+     * precedence at `eventUuid()` lookup time).
+     *
+     * @return list<string>
+     */
+    public function eventHookNames(): array
+    {
+        $hooks = [];
+
+        $optionMap = ($this->optionReader)(self::EVENT_MAP_OPTION);
+        if (\is_array($optionMap)) {
+            foreach (array_keys($optionMap) as $hook) {
+                if (\is_string($hook) && '' !== $hook) {
+                    $hooks[$hook] = true;
+                }
+            }
+        }
+
+        $filterMap = ($this->filterApplier)(self::EVENT_MAP_FILTER, []);
+        if (\is_array($filterMap)) {
+            foreach (array_keys($filterMap) as $hook) {
+                if (\is_string($hook) && '' !== $hook) {
+                    $hooks[$hook] = true;
+                }
+            }
+        }
+
+        return array_keys($hooks);
+    }
+
     public function eventUuid(string $hookName): ?string
     {
         $fromConstant = ($this->constantReader)(self::EVENT_CONSTANT_PREFIX
