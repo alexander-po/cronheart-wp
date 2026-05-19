@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel in-flight runs on rapid pushes — keeps free Actions minutes from
+# burning on superseded commits.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # Style, static analysis, manifest validation, platform-reqs and security
+  # audit all run on a single PHP version. Pinned to the composer.json floor
+  # (8.2) so the parser used to read src/ matches the version we promise to
+  # support — code using 8.3-only syntax fails here, not in a consumer's
+  # WP install six months later.
+  lint:
+    name: Lint & audit (PHP 8.2)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          coverage: none
+          tools: composer:v2
+
+      - name: Cache Composer
+        uses: actions/cache@v4
+        with:
+          path: ~/.composer/cache
+          key: composer-lint-${{ hashFiles('composer.json') }}
+          restore-keys: composer-lint-
+
+      - run: composer validate --strict
+      - run: composer install --no-interaction --no-progress --prefer-dist
+      - run: composer check-platform-reqs
+      - run: vendor/bin/php-cs-fixer fix --dry-run --diff
+      - run: vendor/bin/phpstan analyse --memory-limit=512M --error-format=github --no-progress
+      # WPCS runs against the WordPress-facing PHP only — the plugin entry
+      # point and the (future) Admin classes. The SDK-style internal code
+      # under `src/` lives by strict_types + PSR-12, which php-cs-fixer
+      # enforces above. WPCS scope is declared in `.phpcs.xml.dist`.
+      - run: vendor/bin/phpcs --standard=.phpcs.xml.dist
+      - run: composer audit
+
+  test:
+    name: Test (PHP ${{ matrix.php }}${{ matrix.deps == 'lowest' && ' / lowest deps' || '' }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.2', '8.3', '8.4']
+        deps: ['highest']
+        include:
+          - php: '8.2'
+            deps: 'lowest'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+          tools: composer:v2
+
+      - name: Cache Composer
+        uses: actions/cache@v4
+        with:
+          path: ~/.composer/cache
+          key: composer-${{ matrix.php }}-${{ matrix.deps }}-${{ hashFiles('composer.json') }}
+          restore-keys: composer-${{ matrix.php }}-${{ matrix.deps }}-
+
+      - name: Install dependencies (${{ matrix.deps }})
+        run: |
+          if [ "${{ matrix.deps }}" = "lowest" ]; then
+            composer update --prefer-lowest --prefer-stable --no-interaction --no-progress --prefer-dist
+          else
+            composer install --no-interaction --no-progress --prefer-dist
+          fi
+
+      - run: vendor/bin/phpunit

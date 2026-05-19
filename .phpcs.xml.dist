@@ -1,0 +1,59 @@
+<?xml version="1.0"?>
+<ruleset name="cronheart-wp">
+    <description>
+        WordPress Coding Standards for the user-facing surface of the
+        cronheart-wp plugin: the entry point `cronheart.php` and the
+        admin / WP-Cron-facing code that interacts directly with
+        WordPress's procedural API.
+
+        The plugin's SDK-style internal code under `src/` lives by
+        PSR-12 + strict_types and is enforced by php-cs-fixer (see
+        `.php-cs-fixer.dist.php`). WPCS conventions (snake_case names,
+        Yoda comparisons, prefix-everything-in-the-global-namespace)
+        are explicitly scoped away from `src/` because dual-enforcing
+        both rule sets produces unfixable noise.
+    </description>
+
+    <file>cronheart.php</file>
+
+    <!-- When the Admin / Hooks layers land they will be folded into
+         this scope via additional <file> entries — but kept narrowly
+         to the files that touch WP globals, never blanket-applied to
+         the whole tree. -->
+
+    <arg name="basepath" value="."/>
+    <arg name="colors"/>
+    <arg name="extensions" value="php"/>
+    <arg value="ps"/>
+
+    <rule ref="WordPress-Core"/>
+    <rule ref="WordPress-Extra"/>
+
+    <!-- Plugin text domain enforcement. Anything user-facing must use
+         this domain (`__( 'foo', 'cronheart' )`), matching the
+         `Text Domain:` header in cronheart.php. -->
+    <rule ref="WordPress.WP.I18n">
+        <properties>
+            <property name="text_domain" type="array">
+                <element value="cronheart"/>
+            </property>
+        </properties>
+    </rule>
+
+    <!-- Global namespace pollution check. Every function, constant,
+         class, and hook this plugin contributes to the global
+         namespace must start with one of these prefixes. -->
+    <rule ref="WordPress.NamingConventions.PrefixAllGlobals">
+        <properties>
+            <property name="prefixes" type="array">
+                <element value="cronheart"/>
+                <element value="Cronheart\WP"/>
+            </property>
+        </properties>
+    </rule>
+
+    <!-- Minimum supported WordPress and PHP versions for the
+         deprecation / compatibility sniffs. -->
+    <config name="minimum_supported_wp_version" value="6.0"/>
+    <config name="testVersion" value="8.2-"/>
+</ruleset>
