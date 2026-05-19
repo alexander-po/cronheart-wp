@@ -1,0 +1,14 @@
+parameters:
+    level: 8
+    paths:
+        - src
+        - tests
+    # Later commits will reach into WordPress core (`add_action`,
+    # `wp_schedule_event`, `current_user_can`, …) which PHPStan cannot
+    # see at static-analysis time. When that happens we will add a
+    # hand-maintained stub file under `tests/stubs/wordpress.php` (kept
+    # narrow on purpose — `szepeviktor/phpstan-wordpress` carries
+    # ~1500 stubs and a large transitive dev surface we do not want).
+    # The scaffold's `Plugin` class touches none of those yet, so the
+    # stub is omitted for this commit.
+    treatPhpDocTypesAsCertain: false
