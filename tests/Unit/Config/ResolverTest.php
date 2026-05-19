@@ -120,6 +120,44 @@ final class ResolverTest extends TestCase
         self::assertNull($resolver->eventUuid('app:reports:nightly'));
     }
 
+    public function test_event_hook_names_unions_option_keys_and_filter_keys(): void
+    {
+        $resolver = $this->buildResolver(
+            constants: [],
+            options: [Resolver::EVENT_MAP_OPTION => [
+                'a:nightly' => 'uuid-a',
+                'b:weekly' => '',
+            ]],
+            filterMap: [
+                'b:weekly' => 'uuid-b-filter',
+                'c:hourly' => 'uuid-c',
+            ],
+        );
+
+        $names = $resolver->eventHookNames();
+
+        sort($names);
+        self::assertSame(['a:nightly', 'b:weekly', 'c:hourly'], $names);
+    }
+
+    public function test_event_hook_names_returns_empty_list_when_no_source_registers_anything(): void
+    {
+        self::assertSame([], $this->buildResolver(constants: [], options: [])->eventHookNames());
+    }
+
+    public function test_event_hook_names_skips_empty_string_keys(): void
+    {
+        // Defensive: `''` as a key has no meaningful hook semantics
+        // and would short-circuit PerEventInstrumentation's loop.
+        $resolver = $this->buildResolver(
+            constants: [],
+            options: [Resolver::EVENT_MAP_OPTION => ['' => 'should-not-leak']],
+            filterMap: ['' => 'should-not-leak-either'],
+        );
+
+        self::assertSame([], $resolver->eventHookNames());
+    }
+
     /**
      * @param array<string, string> $constants
      * @param array<string, mixed>  $options

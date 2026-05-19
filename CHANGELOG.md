@@ -26,6 +26,22 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 - `Api\Client` thin façade over the bundled `CronMonitorClient` with
   belt-and-suspenders `try/catch` to guard the host job against a
   hypothetical custom-transport contract violation.
+- **Per-event monitoring layer** (`Hooks\PerEventInstrumentation`):
+  wraps registered hooks with start / success / fail pings via
+  `PHP_INT_MIN` / `PHP_INT_MAX` priority sandwich, plus a shutdown
+  sweep that fires `fail` pings for hooks that started but never
+  reached the success listener. The fail body includes the
+  `error_get_last()` capture when a PHP fatal triggered the
+  failure.
+- **`cronheart_monitor( $hook, $uuid )` helper** (registered via
+  Composer `autoload.files` so it is available immediately after
+  `vendor/autoload.php`) adds an entry to the `cronheart_monitor_map`
+  filter. Passing `null` for the UUID registers the hook name only,
+  letting `CRONHEART_EVENT_<HOOK>_UUID` in `wp-config.php` supply
+  the value through the resolver's precedence chain.
+- `Resolver::eventHookNames()` enumerates hooks to instrument from
+  the union of the `cronheart_event_map` option keys and the
+  `cronheart_monitor_map` filter keys.
 
 ### Known limitations
 
