@@ -28,13 +28,11 @@ cd "$ROOT"
 rm -rf "$BUILD_DIR"
 mkdir -p "$STAGE_DIR"
 
-# Production deps only, then Strauss-prefix them so the plugin's
-# `vendor-prefixed/` is the only autoloader path the runtime sees for
-# our SDK and nyholm/psr7. PSR-* interface packages stay in `vendor/`
-# untouched (they are excluded from prefixing in composer.json's
-# extra.strauss config).
+# Production deps only. Vendor namespace prefixing (Strauss /
+# php-scoper) is deferred to v0.1.1+ — see README and CHANGELOG. For
+# the v0.1.0 GitHub-only release we ship the SDK under its canonical
+# `CronMonitor\…` namespace.
 composer install --no-dev --no-interaction --no-progress --prefer-dist
-vendor/bin/strauss
 
 # Stage only the files that ship with the plugin. Everything not listed
 # here is dev-time scaffolding (tests, CI, linters) that does not belong
@@ -44,7 +42,6 @@ cp readme.txt "$STAGE_DIR/"
 cp LICENSE "$STAGE_DIR/"
 cp -R src "$STAGE_DIR/"
 cp -R vendor "$STAGE_DIR/"
-cp -R vendor-prefixed "$STAGE_DIR/"
 
 # Wrap the staged tree in `cronheart/` so the zip extracts directly
 # into a `wp-content/plugins/cronheart/` directory.

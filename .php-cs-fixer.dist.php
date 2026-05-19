@@ -18,6 +18,10 @@ declare(strict_types=1);
 $finder = (new PhpCsFixer\Finder())
     ->in(__DIR__.'/src')
     ->in(__DIR__.'/tests')
+    // PHPStan stubs are intentionally minimal — their bodies and
+    // namespace-block format conflict with the @Symfony rule set,
+    // and they are never loaded at runtime.
+    ->exclude('stubs')
     ->append([__FILE__]);
 
 return (new PhpCsFixer\Config())

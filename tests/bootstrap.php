@@ -5,10 +5,18 @@ declare(strict_types=1);
 /*
  * PHPUnit bootstrap for cronheart-wp.
  *
- * `vendor/autoload.php` is enough for the scaffold — Brain Monkey,
- * which mocks WordPress core functions, is set up per-test (see
- * later commits' tests under `tests/Unit/Hooks/`) rather than
- * globally, because each test wants its own clean mock surface.
+ * Loads `vendor/autoload.php` — Composer's PSR-4 autoloader covers
+ * both the plugin's own `Cronheart\WP\…` namespace and the unmodified
+ * `CronMonitor\…` SDK namespace from vendor/.
+ *
+ * Vendor namespace prefixing (Strauss / php-scoper) is deferred to
+ * v0.1.1+ when we submit to wordpress.org and conflict-isolation
+ * becomes meaningful. For the v0.1.0 GitHub-only release, vendor/
+ * autoload is sufficient.
+ *
+ * Brain Monkey, which mocks WordPress core functions, is set up
+ * per-test class (in `setUp()`/`tearDown()`) rather than globally —
+ * each test wants its own clean mock surface.
  */
 
 require __DIR__.'/../vendor/autoload.php';

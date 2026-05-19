@@ -20,33 +20,21 @@ declare(strict_types=1);
 defined( 'ABSPATH' ) || exit;
 
 /*
- * The plugin's runtime code lives under `src/` and is loaded through two
- * Composer-generated autoloaders:
+ * The plugin's runtime code lives under `src/` and is loaded through
+ * Composer's PSR-4 autoloader.
  *
- *   - vendor-prefixed/autoload.php — the cron-monitor PHP SDK and
- *     nyholm/psr7, namespace-prefixed by Strauss into
- *     `Cronheart\WP\Vendor\…` to avoid clashes with other plugins that
- *     ship the same packages under their canonical namespaces.
- *
- *   - vendor/autoload.php — Composer's main autoloader, which also
- *     resolves this plugin's own `Cronheart\WP\…` namespace via the
- *     PSR-4 mapping in composer.json.
- *
- * We try vendor-prefixed first because release builds delete the
- * original `vendor/cron-monitor` and `vendor/nyholm` directories after
- * Strauss has copied them with prefixes; falling through to vendor/
- * alone lets a developer working from the source tree boot the plugin
- * before they have run Strauss.
+ * Vendor namespace prefixing (via Strauss / php-scoper) is intentionally
+ * deferred to v0.1.1+ when we submit to wordpress.org. For the v0.1.0
+ * GitHub-only release we ship the SDK under its canonical
+ * `CronMonitor\…` namespace. Conflict risk is minimal in practice
+ * because `cron-monitor/php-sdk` is not yet bundled by any other
+ * plugin — the namespace is unique to this integration.
  */
-$cronheart_prefixed_autoload = __DIR__ . '/vendor-prefixed/autoload.php';
-$cronheart_vendor_autoload   = __DIR__ . '/vendor/autoload.php';
-if ( file_exists( $cronheart_prefixed_autoload ) ) {
-	require_once $cronheart_prefixed_autoload;
-}
+$cronheart_vendor_autoload = __DIR__ . '/vendor/autoload.php';
 if ( file_exists( $cronheart_vendor_autoload ) ) {
 	require_once $cronheart_vendor_autoload;
 }
-unset( $cronheart_prefixed_autoload, $cronheart_vendor_autoload );
+unset( $cronheart_vendor_autoload );
 
 if ( ! class_exists( \Cronheart\WP\Plugin::class ) ) {
 	// Plugin source missing — typically a misconfigured install (plugin
@@ -55,5 +43,12 @@ if ( ! class_exists( \Cronheart\WP\Plugin::class ) ) {
 	// notice in wp-admin instead.
 	return;
 }
+
+// Activation / deactivation hooks must reference the plugin's main
+// file (`__FILE__` resolves to cronheart.php here), so the calls live
+// at the top level rather than inside the bootstrap class. They
+// schedule / unschedule the heartbeat WP-Cron event.
+register_activation_hook( __FILE__, array( \Cronheart\WP\Hooks\HeartbeatScheduler::class, 'activate' ) );
+register_deactivation_hook( __FILE__, array( \Cronheart\WP\Hooks\HeartbeatScheduler::class, 'deactivate' ) );
 
 ( new \Cronheart\WP\Plugin() )->boot();
