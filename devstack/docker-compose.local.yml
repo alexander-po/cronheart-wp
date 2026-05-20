@@ -1,0 +1,40 @@
+# Override layered on top of `docker-compose.yml` to enable the
+# **local-backend smoke mode**.
+#
+# Joins the WordPress and WP-CLI containers to the cron-monitor
+# backend's Docker network so the plugin can reach the backend at
+# the internal hostname `http://app` (the service name inside the
+# cron-monitor compose project).
+#
+# Requires:
+#   - The closed-source `cron-monitor` repository checked out at
+#     `../cron-monitor`.
+#   - The cron-monitor backend already up via `cd ../cron-monitor &&
+#     make up` (this is what creates the `cron-monitor_default`
+#     network we reference as external below).
+#
+# Usage:
+#     docker compose \
+#       -f devstack/docker-compose.yml \
+#       -f devstack/docker-compose.local.yml \
+#       up -d
+#
+# Public contributors without backend access should NOT use this
+# file — the `external: true` declaration will fail to resolve the
+# network. Use the base compose alone for production-mode smoke.
+
+services:
+  wordpress:
+    networks:
+      - default
+      - cronheart-backend
+
+  wp-cli:
+    networks:
+      - default
+      - cronheart-backend
+
+networks:
+  cronheart-backend:
+    external: true
+    name: cron-monitor_default

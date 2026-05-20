@@ -6,7 +6,27 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-_Nothing yet — open a PR and add your entry under the appropriate subsection._
+### Added
+
+- **`CRONHEART_ENDPOINT` constant / `cronheart_endpoint` option** for
+  pointing the plugin at a non-production cronheart deployment
+  (staging, private VPC install, local dev backend). Resolver
+  precedence matches the UUID story: `wp-config.php` constant >
+  `wp_options` > default (`https://cronheart.com`).
+- **`CRONHEART_ALLOW_INSECURE_ENDPOINT` constant /
+  `cronheart_allow_insecure_endpoint` option** to opt into plain
+  `http://` endpoints. Defaults to false (HTTPS-enforced). Required
+  when pointing the plugin at a local backend behind
+  `host.docker.internal` or any TLS-less private deployment. Accepts
+  native booleans (`define('…', true)`) and the canonical truthy /
+  falsy string forms (`'true'`, `'1'`, `'yes'`, `'on'` and
+  inverses) — the latter useful for env-var-expanded values.
+- **`Resolver::endpoint()` and `Resolver::allowInsecureEndpoint()`**
+  expose the resolved values to consumers; `Plugin::boot()` wires
+  them into the SDK's `Configuration`. Misconfigurations (plain
+  `http://` without allow-insecure, malformed URL) are caught at
+  Configuration construction time and fall back to defaults so the
+  WP-Cron run is never blocked by bad config.
 
 ## [0.1.0] — 2026-05-20
 
