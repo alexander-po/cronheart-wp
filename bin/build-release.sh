@@ -29,17 +29,26 @@ rm -rf "$BUILD_DIR"
 mkdir -p "$STAGE_DIR"
 
 # Production deps only. Vendor namespace prefixing (Strauss /
-# php-scoper) is deferred to v0.1.1+ — see README and CHANGELOG. For
-# the v0.1.0 GitHub-only release we ship the SDK under its canonical
-# `CronMonitor\…` namespace.
+# php-scoper) is deferred — see README and CHANGELOG. We ship the
+# SDK under its canonical `CronMonitor\…` namespace; conflict risk
+# is minimal in practice because no other WP plugin currently bundles
+# `cron-monitor/php-sdk`.
 composer install --no-dev --no-interaction --no-progress --prefer-dist
 
-# Stage only the files that ship with the plugin. Everything not listed
-# here is dev-time scaffolding (tests, CI, linters) that does not belong
-# in the WordPress install directory.
+# Stage only the files that ship with the plugin. Everything not
+# listed here is dev-time scaffolding (tests, CI, linters) that does
+# not belong in the WordPress install directory.
+#
+# `composer.json` and `composer.lock` are intentionally included so
+# the shipped `vendor/` tree is reproducible — WP.org's Plugin Check
+# warns when `/vendor` exists without the manifest that produced it,
+# and downstream contributors can run `composer install` against the
+# checked-in lock to recreate the exact tree.
 cp cronheart.php "$STAGE_DIR/"
 cp readme.txt "$STAGE_DIR/"
 cp LICENSE "$STAGE_DIR/"
+cp composer.json "$STAGE_DIR/"
+cp composer.lock "$STAGE_DIR/"
 cp -R src "$STAGE_DIR/"
 cp -R vendor "$STAGE_DIR/"
 

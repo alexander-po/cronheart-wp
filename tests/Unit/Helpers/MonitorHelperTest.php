@@ -25,11 +25,12 @@ final class MonitorHelperTest extends TestCase
 
     public function test_helper_is_globally_defined_and_registers_one_filter_per_call(): void
     {
-        // Smoke-tests two contracts at once: the Composer
-        // `autoload.files` directive loaded the helper into the
-        // global namespace (no add_action(plugins_loaded, …)
-        // ceremony required), and the helper registers exactly one
-        // `cronheart_monitor_map` filter per call.
+        // Smoke-tests two contracts at once: `tests/bootstrap.php`
+        // has loaded the helper into the global namespace (mirroring
+        // how `cronheart.php` wires it in the WordPress runtime — see
+        // `src/Helpers/monitor.php` for the loader-path rationale),
+        // and the helper registers exactly one `cronheart_monitor_map`
+        // filter per call.
         self::assertTrue(\function_exists('cronheart_monitor'));
 
         Filters\expectAdded('cronheart_monitor_map')->once();

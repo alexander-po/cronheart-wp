@@ -8,6 +8,65 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 _Nothing yet — open a PR and add your entry under the appropriate subsection._
 
+## [0.1.3] — 2026-05-20
+
+WordPress.org Plugin Check pre-flight fixes. Sprint D's local run
+of `wp plugin check cronheart` against the staged v0.1.2 zip
+surfaced four blocking errors and one warning; this release
+clears them so the WP.org review queue doesn't bounce the
+submission for static-analysis nits.
+
+### Changed
+
+- **Direct-access guards** (`defined( 'ABSPATH' ) || exit;`) added
+  to `src/Plugin.php`, `src/Admin/SettingsPage.php`, and
+  `src/Helpers/monitor.php`. The class files are loaded through
+  Composer's PSR-4 autoloader (never as top-level scripts), so the
+  guard has no runtime effect — Plugin Check's
+  `missing_direct_file_access_protection` sniff fires on the
+  missing token regardless, and submissions that omit it routinely
+  get held up in review. The check's regex matches the canonical
+  shape strictly (`defined('ABSPATH') (||/or) (exit/die);`); any
+  decorating clause between the constant probe and the exit (e.g.
+  a CLI escape hatch) defeats the match. We carry the canonical
+  pattern verbatim and address the CLI / test-runner case at the
+  loader layer (next bullet) instead.
+- **`cronheart_monitor()` helper loading** moved out of Composer's
+  `autoload.files` directive and into an explicit `require_once`
+  from `cronheart.php` (production) plus `tests/bootstrap.php`
+  (unit tests). The autoload-files path triggered the helper on
+  every `vendor/autoload.php` require — including the one PHPUnit
+  performs *before* its own bootstrap runs, which would silently
+  exit the test runner once the helper carried the canonical
+  ABSPATH guard. Production behaviour is unchanged: the function
+  is still available the moment the plugin boots, because
+  `cronheart.php` runs inside WordPress where `ABSPATH` is set by
+  `wp-load.php` long before any plugin loads.
+- **`tests/bootstrap.php`** now predefines `ABSPATH` to a sentinel
+  before requiring autoload, so PSR-4 loads of `Plugin` /
+  `SettingsPage` from test classes pick up the guard as a no-op
+  instead of exiting. The sentinel is the `tests/` directory
+  itself — deliberately not a real install path — so any test
+  that accidentally derefs it fails loudly rather than silently
+  reading the wrong location.
+- **`Admin\SettingsPage::render_event_table`** refactor: the
+  escaped UUID display is now inlined as a ternary directly inside
+  the `printf` call instead of pre-assigned to `$uuid_display`.
+  Plugin Check's `WordPress.Security.EscapeOutput` sniff doesn't
+  track escape calls across variable assignments, so the previous
+  shape produced a false-positive "OutputNotEscaped" error even
+  though both branches called `esc_html_*` before assignment. The
+  inline form makes the escape visible to the scanner. Output
+  identical.
+- **`bin/build-release.sh`** now copies `composer.json` and
+  `composer.lock` into the staged tree alongside `vendor/`. Plugin
+  Check warns when `/vendor` exists without the manifest that
+  produced it, and downstream contributors can now run
+  `composer install` against the checked-in lock to recreate the
+  exact dependency tree we shipped.
+- Bumped plugin header `Version` from `0.1.2` to `0.1.3`; bumped
+  `readme.txt` `Stable tag` to `0.1.3`.
+
 ## [0.1.2] — 2026-05-20
 
 WordPress.org submission readiness. No code changes — pure

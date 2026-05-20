@@ -13,6 +13,16 @@ use Cronheart\WP\Hooks\HeartbeatScheduler;
 use Cronheart\WP\Hooks\PerEventInstrumentation;
 use CronMonitor\Client\Configuration;
 
+// Direct-access guard. WP.org's Plugin Check flags every PHP file
+// that is reachable through a stray HTTP request without an
+// `ABSPATH` probe — even though PSR-4 means this class is never
+// loaded as a top-level script in practice, the static check fires
+// on the missing constant regardless. The check's regex is strict
+// about the canonical `defined('ABSPATH') || exit;` shape, so we
+// stick to it. `tests/bootstrap.php` predefines `ABSPATH` to a
+// sentinel before autoload runs, which keeps the unit suite happy.
+\defined('ABSPATH') || exit;
+
 /**
  * Plugin entry point, called from `cronheart.php`.
  *

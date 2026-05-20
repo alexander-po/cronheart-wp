@@ -6,6 +6,10 @@ namespace Cronheart\WP\Admin;
 
 use Cronheart\WP\Config\Resolver;
 
+// Direct-access guard. See `Plugin.php` for the rationale —
+// same canonical pattern, same Plugin-Check-imposed shape.
+\defined('ABSPATH') || exit;
+
 /**
  * Settings → Cronheart admin page.
  *
@@ -210,13 +214,17 @@ final class SettingsPage
         echo '</tr></thead><tbody>';
 
         foreach ($entries as $entry) {
-            $uuid_display = null === $entry['uuid']
-                ? esc_html__('(suppressed)', 'cronheart')
-                : esc_html($entry['uuid']);
+            // Inline ternary rather than a pre-assigned variable so
+            // Plugin Check's `WordPress.Security.EscapeOutput` sniff
+            // sees the `esc_html_*` calls as direct printf arguments
+            // — it doesn't track escaped values through variable
+            // assignment and would otherwise flag the substitution.
             printf(
                 '<tr><td><code>%s</code></td><td><code>%s</code></td></tr>',
                 esc_html($entry['hook']),
-                $uuid_display
+                null === $entry['uuid']
+                    ? esc_html__('(suppressed)', 'cronheart')
+                    : esc_html($entry['uuid'])
             );
         }
 
