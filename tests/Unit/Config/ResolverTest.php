@@ -158,15 +158,117 @@ final class ResolverTest extends TestCase
         self::assertSame([], $resolver->eventHookNames());
     }
 
+    public function test_endpoint_returns_null_when_no_source_supplies_a_value(): void
+    {
+        // Null tells the plugin "use the SDK's default (cronheart.com)".
+        $resolver = $this->buildResolver(constants: [], options: []);
+
+        self::assertNull($resolver->endpoint());
+    }
+
+    public function test_endpoint_constant_overrides_option_and_defaults(): void
+    {
+        $resolver = $this->buildResolver(
+            constants: [Resolver::ENDPOINT_CONSTANT => 'http://host.docker.internal:8081'],
+            options: [Resolver::ENDPOINT_OPTION => 'https://staging.cronheart.com'],
+        );
+
+        self::assertSame('http://host.docker.internal:8081', $resolver->endpoint());
+    }
+
+    public function test_endpoint_falls_back_to_option_when_constant_unset(): void
+    {
+        $resolver = $this->buildResolver(
+            constants: [],
+            options: [Resolver::ENDPOINT_OPTION => 'https://staging.cronheart.com'],
+        );
+
+        self::assertSame('https://staging.cronheart.com', $resolver->endpoint());
+    }
+
+    public function test_endpoint_empty_string_at_either_level_is_treated_as_unset(): void
+    {
+        // The SDK would reject a literally empty endpoint anyway; we
+        // collapse it to null here so the plugin uses the default,
+        // matching the empty-string-as-suppression policy we apply
+        // elsewhere (UUIDs).
+        self::assertNull($this->buildResolver(
+            constants: [Resolver::ENDPOINT_CONSTANT => ''],
+            options: [Resolver::ENDPOINT_OPTION => 'https://other.example.com'],
+        )->endpoint());
+
+        self::assertNull($this->buildResolver(
+            constants: [],
+            options: [Resolver::ENDPOINT_OPTION => ''],
+        )->endpoint());
+    }
+
+    public function test_allow_insecure_endpoint_defaults_to_false(): void
+    {
+        $resolver = $this->buildResolver(constants: [], options: []);
+
+        self::assertFalse($resolver->allowInsecureEndpoint());
+    }
+
+    public function test_allow_insecure_endpoint_accepts_native_boolean_constants(): void
+    {
+        // `define('CRONHEART_ALLOW_INSECURE_ENDPOINT', true);` is the
+        // most natural form for wp-config.php — confirm both true and
+        // false flow through.
+        self::assertTrue($this->buildResolver(
+            constants: [Resolver::ALLOW_INSECURE_CONSTANT => true],
+            options: [],
+        )->allowInsecureEndpoint());
+
+        self::assertFalse($this->buildResolver(
+            constants: [Resolver::ALLOW_INSECURE_CONSTANT => false],
+            options: [],
+        )->allowInsecureEndpoint());
+    }
+
+    public function test_allow_insecure_endpoint_accepts_truthy_falsy_string_constants(): void
+    {
+        // When the constant value flows through env-var expansion the
+        // PHP boolean ends up as a string. We accept the canonical
+        // forms — useful for hosts that source secrets from env files.
+        foreach (['true', '1', 'yes', 'on'] as $truthy) {
+            self::assertTrue(
+                $this->buildResolver(constants: [Resolver::ALLOW_INSECURE_CONSTANT => $truthy], options: [])
+                    ->allowInsecureEndpoint(),
+                "Expected truthy interpretation of '{$truthy}'"
+            );
+        }
+        foreach (['false', '0', 'no', 'off'] as $falsy) {
+            self::assertFalse(
+                $this->buildResolver(constants: [Resolver::ALLOW_INSECURE_CONSTANT => $falsy], options: [])
+                    ->allowInsecureEndpoint(),
+                "Expected falsy interpretation of '{$falsy}'"
+            );
+        }
+    }
+
+    public function test_allow_insecure_endpoint_falls_back_to_option_when_constant_unset(): void
+    {
+        self::assertTrue($this->buildResolver(
+            constants: [],
+            options: [Resolver::ALLOW_INSECURE_OPTION => '1'],
+        )->allowInsecureEndpoint());
+
+        self::assertFalse($this->buildResolver(
+            constants: [],
+            options: [Resolver::ALLOW_INSECURE_OPTION => ''],
+        )->allowInsecureEndpoint());
+    }
+
     /**
-     * @param array<string, string> $constants
+     * @param array<string, mixed>  $constants accepts native PHP types — strings for UUID / endpoint, booleans for allow-insecure — matching what `constant()` would return in production
      * @param array<string, mixed>  $options
      * @param array<string, string> $filterMap
      */
     private function buildResolver(array $constants, array $options, array $filterMap = []): Resolver
     {
         return new Resolver(
-            constantReader: static fn (string $name): ?string => \array_key_exists($name, $constants) ? $constants[$name] : null,
+            constantReader: static fn (string $name) => \array_key_exists($name, $constants) ? $constants[$name] : null,
             optionReader: static fn (string $name) => $options[$name] ?? null,
             filterApplier: static fn (string $name, array $value) => Resolver::EVENT_MAP_FILTER === $name ? $filterMap : $value,
         );
