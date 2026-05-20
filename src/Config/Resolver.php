@@ -50,13 +50,25 @@ final class Resolver
     public const EVENT_MAP_FILTER = 'cronheart_monitor_map';
     public const EVENT_CONSTANT_PREFIX = 'CRONHEART_EVENT_';
     public const EVENT_CONSTANT_SUFFIX = '_UUID';
+    public const ENDPOINT_CONSTANT = 'CRONHEART_ENDPOINT';
+    public const ENDPOINT_OPTION = 'cronheart_endpoint';
+    public const ALLOW_INSECURE_CONSTANT = 'CRONHEART_ALLOW_INSECURE_ENDPOINT';
+    public const ALLOW_INSECURE_OPTION = 'cronheart_allow_insecure_endpoint';
 
     /**
-     * @param \Closure(string): ?string                      $constantReader returns the
-     *                                                                       string value
-     *                                                                       of a defined
-     *                                                                       constant, or
-     *                                                                       null
+     * @param \Closure(string): mixed                        $constantReader returns the
+     *                                                                       value of a
+     *                                                                       defined
+     *                                                                       constant
+     *                                                                       (whatever PHP
+     *                                                                       returns from
+     *                                                                       `constant()`
+     *                                                                       — string for
+     *                                                                       UUIDs, bool
+     *                                                                       for
+     *                                                                       allow-insecure
+     *                                                                       — or null
+     *                                                                       when undefined
      * @param \Closure(string): mixed                        $optionReader   returns the
      *                                                                       current
      *                                                                       value of a
@@ -79,7 +91,7 @@ final class Resolver
     public function heartbeatUuid(): ?string
     {
         $fromConstant = ($this->constantReader)(self::HEARTBEAT_CONSTANT);
-        if (null !== $fromConstant) {
+        if (\is_string($fromConstant)) {
             return '' === $fromConstant ? null : $fromConstant;
         }
 
@@ -139,7 +151,7 @@ final class Resolver
         $fromConstant = ($this->constantReader)(self::EVENT_CONSTANT_PREFIX
             .self::normaliseHookForConstant($hookName)
             .self::EVENT_CONSTANT_SUFFIX);
-        if (null !== $fromConstant) {
+        if (\is_string($fromConstant)) {
             return '' === $fromConstant ? null : $fromConstant;
         }
 
@@ -160,6 +172,64 @@ final class Resolver
         }
 
         return null;
+    }
+
+    /**
+     * Resolves the cron-monitor endpoint URL. Returns null to mean
+     * "the SDK's built-in default" (the SaaS at cronheart.com); a
+     * concrete URL overrides the default for staging / private /
+     * self-hosted deployments.
+     *
+     * Empty-string is treated as "unset" (same suppression policy as
+     * UUIDs) — never as a literal blank endpoint, which would be a
+     * misconfiguration the SDK would reject anyway.
+     */
+    public function endpoint(): ?string
+    {
+        $fromConstant = ($this->constantReader)(self::ENDPOINT_CONSTANT);
+        if (\is_string($fromConstant)) {
+            return '' === $fromConstant ? null : $fromConstant;
+        }
+
+        $fromOption = ($this->optionReader)(self::ENDPOINT_OPTION);
+        if (\is_string($fromOption)) {
+            return '' === $fromOption ? null : $fromOption;
+        }
+
+        return null;
+    }
+
+    /**
+     * Whether the SDK should accept `http://` endpoints (the SDK's
+     * `Configuration` rejects plain-HTTP by default — leaking the
+     * monitor UUID over the network in clear text). Required when
+     * pointing the plugin at a local backend (e.g. `make up` cronheart
+     * on `http://host.docker.internal:8081`) or any staging behind a
+     * VPN that does not terminate TLS.
+     *
+     * The constant accepts `true` / `false` literals (the natural
+     * `define('CRONHEART_ALLOW_INSECURE_ENDPOINT', true);` pattern)
+     * and the canonical truthy / falsy string forms `'true'`,
+     * `'false'`, `'1'`, `'0'`, `'yes'`, `'no'` — the latter useful
+     * when the value flows through environment-variable expansion in
+     * the wp-config.php loader.
+     */
+    public function allowInsecureEndpoint(): bool
+    {
+        $fromConstant = ($this->constantReader)(self::ALLOW_INSECURE_CONSTANT);
+        if (\is_bool($fromConstant)) {
+            return $fromConstant;
+        }
+        if (\is_string($fromConstant) && '' !== $fromConstant) {
+            return (bool) filter_var($fromConstant, \FILTER_VALIDATE_BOOLEAN);
+        }
+        if (\is_int($fromConstant)) {
+            return 0 !== $fromConstant;
+        }
+
+        $fromOption = ($this->optionReader)(self::ALLOW_INSECURE_OPTION);
+
+        return (bool) $fromOption;
     }
 
     /**
