@@ -140,16 +140,17 @@ add_action( 'plugins_loaded', function () {
 > instead — at which point the **heartbeat** layer catches that the
 > WP-Cron run itself never completed.
 
-## Known limitations (v0.1.0)
+## Known limitations
 
-- **Vendor namespace prefixing is deferred to v0.1.1+.** Today the
-  bundled SDK ships under its canonical `CronMonitor\…` namespace.
-  When we re-enable Strauss / php-scoper for the WordPress.org
-  submission, the SDK will be relocated to
-  `Cronheart\WP\Vendor\CronMonitor\…`. **Do not depend on the
-  `CronMonitor\…` namespace from outside this plugin** (e.g. another
-  plugin reading our autoload) — that surface is going to move in
-  a minor release.
+- **Vendor namespace prefixing is deferred.** Today the bundled SDK
+  ships under its canonical `CronMonitor\…` namespace; we'll
+  reach for Strauss / php-scoper if a real collision is reported in
+  the wild, at which point the SDK relocates to
+  `Cronheart\WP\Vendor\CronMonitor\…`. Conflict risk is low because
+  no other WP plugin currently bundles `cron-monitor/php-sdk`.
+  **Do not depend on the `CronMonitor\…` namespace from outside
+  this plugin** (e.g. another plugin reading our autoload) — that
+  surface may move in a future minor release without warning.
 - **No WP-CLI commands** in v0.1.0 (planned for v0.2).
 - **No multisite / network-activation handling** in v0.1.0 (planned
   for v0.2). The plugin works on a single-site install.

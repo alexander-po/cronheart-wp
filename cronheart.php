@@ -3,7 +3,7 @@
  * Plugin Name:       Cronheart
  * Plugin URI:        https://github.com/alexander-po/cronheart-wp
  * Description:       Monitors WP-Cron with cronheart.com. Detects when scheduled events stop firing — heartbeat for the whole site plus per-event start/success/fail pings.
- * Version:           0.1.3
+ * Version:           0.1.4
  * Requires at least: 6.0
  * Requires PHP:      8.2
  * Author:            Aliaksandr Palazok
@@ -24,11 +24,12 @@ defined( 'ABSPATH' ) || exit;
  * Composer's PSR-4 autoloader.
  *
  * Vendor namespace prefixing (via Strauss / php-scoper) is intentionally
- * deferred to v0.1.1+ when we submit to wordpress.org. For the v0.1.0
- * GitHub-only release we ship the SDK under its canonical
- * `CronMonitor\…` namespace. Conflict risk is minimal in practice
- * because `cron-monitor/php-sdk` is not yet bundled by any other
- * plugin — the namespace is unique to this integration.
+ * deferred — see README and CHANGELOG. We ship the SDK under its
+ * canonical `CronMonitor\…` namespace; conflict risk is minimal in
+ * practice because `cron-monitor/php-sdk` is not yet bundled by any
+ * other WordPress plugin, so the namespace is effectively unique to
+ * this integration. The prefixing step will be revisited if a
+ * collision is reported in the wild.
  */
 $cronheart_vendor_autoload = __DIR__ . '/vendor/autoload.php';
 if ( file_exists( $cronheart_vendor_autoload ) ) {

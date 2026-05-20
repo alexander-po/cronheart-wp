@@ -9,7 +9,9 @@
 #                        excludes dev deps, tooling configs, CI, and tests.
 #
 # What it does NOT do:
-#   - Push to the WordPress.org SVN (deferred to v0.1.1+ submission).
+#   - Push to the WordPress.org SVN. Once the plugin is approved
+#     and provisioned, that flow lives in a separate script
+#     (planned).
 #   - Sign or verify the zip.
 #   - Bump versions in `cronheart.php` / `readme.txt`. Do that in a
 #     separate commit before invoking this script.
@@ -58,8 +60,18 @@ cp -R vendor "$STAGE_DIR/"
 # scaffolding gets dragged in unless we explicitly trim it here.
 # Saves ~60% of the zip size and avoids shipping third-party test
 # suites that could surprise users who poke around with grep.
+#
+# The agent-instruction / contributor-doc files (`CLAUDE.md`,
+# `AGENTS.md`, `CONTRIBUTING.md`, `SECURITY.md`, etc.) are stripped
+# specifically because WordPress.org plugin reviewers may flag
+# stray AI-tooling notes inside a plugin zip as out-of-scope
+# bundling — those files target SDK contributors, not WP-plugin
+# operators, and have no business in the runtime distribution.
+# `LICENSE` / `LICENSE.md` deliberately stay (third-party
+# attribution requirement).
 find "$STAGE_DIR/vendor" -type d \( -name tests -o -name test -o -name docs -o -name doc -o -name examples -o -name '.github' \) -exec rm -rf {} +
 find "$STAGE_DIR/vendor" -type f \( -name 'phpunit.*' -o -name 'phpstan.*' -o -name '.php-cs-fixer*' -o -name 'psalm.*' -o -name '*.dist' -o -name '.editorconfig' -o -name '.gitignore' -o -name '.gitattributes' \) -delete
+find "$STAGE_DIR/vendor" -type f \( -name 'CLAUDE.md' -o -name 'AGENTS.md' -o -name 'CONTRIBUTING.md' -o -name 'SECURITY.md' -o -name 'UPGRADING.md' -o -name 'MAINTAINING.md' -o -name 'CODE_OF_CONDUCT.md' -o -name '.scrutinizer.yml' -o -name '.travis.yml' -o -name '.circleci' \) -delete
 
 # Wrap the staged tree in `cronheart/` so the zip extracts directly
 # into a `wp-content/plugins/cronheart/` directory.

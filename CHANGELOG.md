@@ -8,10 +8,56 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 _Nothing yet — open a PR and add your entry under the appropriate subsection._
 
+## [0.1.4] — 2026-05-20
+
+Pre-submission cleanup ahead of the WordPress.org Plugin Directory
+review. A privacy / hygiene audit of the public repo surfaced
+shipping-zip bloat, stale "deferred to v0.1.1+" promises, and a
+few inconsistencies with the sister `cron-monitor-php` repo's
+license / changelog conventions. No behaviour changes — pings,
+hooks, and admin UI all identical to 0.1.3. Safe to upgrade.
+
+### Changed
+
+- **Release-zip distribution scope tightened.** `bin/build-release.sh`
+  now strips `CLAUDE.md`, `AGENTS.md`, `CONTRIBUTING.md`,
+  `SECURITY.md`, `UPGRADING.md`, `MAINTAINING.md`,
+  `CODE_OF_CONDUCT.md`, and stray CI configs (`.scrutinizer.yml`,
+  `.travis.yml`, `.circleci`) from vendored packages before
+  zipping. The bundled `vendor/cron-monitor/php-sdk/CLAUDE.md`
+  in particular has no business in a WordPress-plugin runtime
+  bundle — it targets SDK contributors, not WP operators, and
+  Plugin Directory reviewers may rightly flag stray AI-tooling
+  notes inside a plugin zip as out-of-scope bundling. Third-party
+  `LICENSE` / `LICENSE.md` files stay (attribution requirement).
+- **`LICENSE` project copyright header.** Added
+  `cronheart-wp — Copyright (C) 2026 Alexander Palazok` plus a
+  short GPL grant notice before the FSF GPL-2.0 preamble. The
+  preamble itself is unchanged; the header makes the licensee
+  attribution explicit and matches the convention the sister
+  `cron-monitor-php` repo uses on its LICENSE file.
+- **CHANGELOG hygiene.** Inserted the missing `## [0.1.1]` section
+  header that v0.1.2's release prep accidentally collapsed into
+  the `## [0.1.2]` block (the endpoint-override notes were under
+  the wrong version). Removed the internal sprint-tracking term
+  "Sprint D" from the v0.1.3 entry — that's planning vocabulary,
+  not user-facing changelog content.
+- **Stale Strauss / php-scoper notes.** Six files carried
+  comments saying vendor namespace prefixing was "deferred to
+  v0.1.1+ when we submit to wordpress.org". We're at v0.1.4 and
+  submitting now, so the promise was misleading. Rewrote them to
+  "deferred pending first reported collision" — the actual current
+  stance — and dropped the "(v0.1.0)" suffix from the README's
+  "Known limitations" heading so the section reads as ongoing
+  product policy rather than a frozen historical note. Files
+  touched: `cronheart.php`, `bin/build-release.sh`,
+  `src/Api/Client.php`, `tests/Unit/Api/ClientTest.php`,
+  `tests/bootstrap.php`, `README.md`.
+
 ## [0.1.3] — 2026-05-20
 
-WordPress.org Plugin Check pre-flight fixes. Sprint D's local run
-of `wp plugin check cronheart` against the staged v0.1.2 zip
+WordPress.org Plugin Check pre-flight fixes. A local run of
+`wp plugin check cronheart` against the staged v0.1.2 zip
 surfaced four blocking errors and one warning; this release
 clears them so the WP.org review queue doesn't bounce the
 submission for static-analysis nits.
@@ -91,6 +137,8 @@ complete, validating `readme.txt`.
   becomes meaningful once we create `tags/0.1.2/` in SVN after the
   plugin is approved; until then, the WP.org infrastructure falls
   back to trunk for the download.
+
+## [0.1.1] — 2026-05-20
 
 Patch release that adds endpoint-override support and the local
 smoke harness that uses it. No breaking changes — plugins not
