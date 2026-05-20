@@ -37,10 +37,28 @@ if ( file_exists( $cronheart_vendor_autoload ) ) {
 unset( $cronheart_vendor_autoload );
 
 if ( ! class_exists( \Cronheart\WP\Plugin::class ) ) {
-	// Plugin source missing — typically a misconfigured install (plugin
-	// uploaded without `vendor/`). Stay silent rather than `wp_die()`
-	// so site-wide admin remains reachable; later commits surface a
-	// notice in wp-admin instead.
+	// Plugin source missing — typically a misconfigured install
+	// (someone uploaded the repo zip from GitHub's "Code → Download
+	// ZIP" instead of the release `cronheart.zip`, or git-cloned
+	// without `composer install`). Stay silent at runtime (do NOT
+	// `wp_die()` — that would lock the operator out of site-wide
+	// admin) but surface a notice in wp-admin so the cause is
+	// diagnosable rather than mysterious.
+	add_action(
+		'admin_notices',
+		static function (): void {
+			if ( ! current_user_can( 'manage_options' ) ) {
+				return;
+			}
+			echo '<div class="notice notice-error"><p>';
+			echo esc_html__(
+				'Cronheart: plugin dependencies are missing (vendor/ directory not found). The plugin will not run until you install the release zip from the GitHub releases page, or run "composer install" in the plugin directory.',
+				'cronheart'
+			);
+			echo '</p></div>';
+		}
+	);
+
 	return;
 }
 
