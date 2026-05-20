@@ -2,9 +2,9 @@
 Contributors: alexanderpo
 Tags: cron, wp-cron, monitoring, healthcheck, deadman-switch
 Requires at least: 6.0
-Tested up to: 6.7
+Tested up to: 6.9
 Requires PHP: 8.2
-Stable tag: 0.1.4
+Stable tag: 0.1.5
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -180,6 +180,16 @@ Open an issue on
 
 == Changelog ==
 
+= 0.1.5 =
+* Bump "Tested up to" from 6.7 to 6.9. WordPress.org's automated
+  scan blocks submission when the readme's "Tested up to" lags
+  the current stable WordPress release, even when the underlying
+  code is unchanged — the field is treated as a freshness signal
+  for the Plugin Directory search. Devstack also moved to
+  `wordpress:6.9-php8.2-apache`; smoke run + Plugin Check
+  re-verified green on 6.9.
+* No code changes.
+
 = 0.1.4 =
 * Pre-submission cleanup before the WordPress.org Plugin Directory
   review. No behaviour changes — pings, hooks, and admin UI all
@@ -242,6 +252,9 @@ Open an issue on
 * PHP fatal-error capture for the fail-ping body.
 
 == Upgrade Notice ==
+
+= 0.1.5 =
+"Tested up to" bump to 6.9. No code changes. Safe to upgrade.
 
 = 0.1.4 =
 Pre-submission cleanup only — no behaviour changes. Safe to upgrade.

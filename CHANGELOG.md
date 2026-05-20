@@ -8,6 +8,35 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 _Nothing yet — open a PR and add your entry under the appropriate subsection._
 
+## [0.1.5] — 2026-05-20
+
+`Tested up to: 6.9` bump. No code changes — pings, hooks, admin
+UI all identical to 0.1.4. Safe to upgrade.
+
+The v0.1.4 submission to the WordPress.org Plugin Directory was
+rejected by the automated scan with a single finding:
+
+    readme.txt ERROR: outdated_tested_upto_header:
+    Tested up to: 6.7 < 6.9
+
+WordPress.org treats "Tested up to" as a freshness signal — even
+when the underlying code is unchanged, plugins whose readme lags
+the current stable WP release are excluded from search results.
+Our local devstack ran `wordpress:6.7-php8.2-apache`, so the
+local Plugin Check passed; the WP.org scan is what surfaced the
+gap.
+
+### Changed
+
+- **`readme.txt` "Tested up to"** bumped from `6.7` to `6.9`.
+- **`devstack/docker-compose.yml`** WordPress image bumped from
+  `wordpress:6.7-php8.2-apache` to `wordpress:6.9-php8.2-apache`,
+  so future local Plugin Check runs catch this class of
+  "freshness" complaint before WP.org does. Smoke run + Plugin
+  Check re-verified green on 6.9.
+- Bumped plugin header `Version` from `0.1.4` to `0.1.5`; bumped
+  `readme.txt` `Stable tag` to `0.1.5`.
+
 ## [0.1.4] — 2026-05-20
 
 Pre-submission cleanup ahead of the WordPress.org Plugin Directory
