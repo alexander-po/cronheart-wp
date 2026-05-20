@@ -58,9 +58,24 @@ https://github.com/alexander-po/cronheart-wp
 
 == Changelog ==
 
+= 0.1.1 =
+* Endpoint override: `CRONHEART_ENDPOINT` constant and
+  `cronheart_endpoint` option for pointing the plugin at a
+  non-production cronheart deployment (staging, private VPC,
+  local backend).
+* `CRONHEART_ALLOW_INSECURE_ENDPOINT` constant /
+  `cronheart_allow_insecure_endpoint` option to opt into plain
+  `http://` endpoints (required for local backends behind
+  `host.docker.internal` or TLS-less private VPNs; default false).
+* Local end-to-end smoke harness under `devstack/` for verifying
+  the plugin against either production cronheart.com (public
+  contributors) or a local cron-monitor backend (maintainers).
+* No breaking changes — installs without the new constants keep
+  the v0.1.0 behaviour.
+
 = 0.1.0 =
 * Initial scaffold (GitHub-only release; WP.org submission deferred
-  to v0.1.1).
+  to v0.1.1+).
 * Site-wide heartbeat layer with a 5-minute custom schedule.
 * Per-event monitoring with `cronheart_monitor()` helper and
   `cronheart_monitor_map` filter.
