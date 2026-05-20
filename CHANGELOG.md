@@ -6,6 +6,15 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+_Nothing yet — open a PR and add your entry under the appropriate subsection._
+
+## [0.1.1] — 2026-05-20
+
+Patch release that adds endpoint-override support and the local
+smoke harness that uses it. No breaking changes — plugins not
+setting the new constants keep the v0.1.0 behaviour (pinging
+`https://cronheart.com`).
+
 ### Added
 
 - **`CRONHEART_ENDPOINT` constant / `cronheart_endpoint` option** for
@@ -27,6 +36,11 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   `http://` without allow-insecure, malformed URL) are caught at
   Configuration construction time and fall back to defaults so the
   WP-Cron run is never blocked by bad config.
+- **`devstack/` end-to-end smoke harness.** Two-mode docker-compose
+  stack and smoke script for verifying the plugin against either
+  production `cronheart.com` (default — public contributors) or a
+  local cron-monitor backend (maintainers only, requires
+  closed-source backend repo). Documented in README.
 
 ## [0.1.0] — 2026-05-20
 
