@@ -4,59 +4,188 @@ Tags: cron, wp-cron, monitoring, healthcheck, deadman-switch
 Requires at least: 6.0
 Tested up to: 6.7
 Requires PHP: 8.2
-Stable tag: trunk
+Stable tag: 0.1.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-Monitor WP-Cron with cronheart.com — detect when WP-Cron stops
-firing and when individual scheduled events fail to complete.
+Dead-man-switch monitoring for WP-Cron. Get alerted when scheduled
+events stop firing — uptime monitors do not catch this.
 
 == Description ==
 
-WP-Cron is request-driven. On a low-traffic site no requests arrive,
-no events fire, and a scheduled backup can be stalled for weeks
-before anyone notices. Uptime monitors do not catch this — the site
-responds to HTTPS just fine, it just is not running its jobs.
+**WP-Cron is request-driven.** On a low-traffic site no requests
+arrive, no events fire, and a scheduled backup can be stalled for
+weeks before anyone notices. Uptime monitors do not catch this — the
+site responds to HTTPS just fine, it just is not running its jobs.
 
-Cronheart turns WP-Cron into a dead-man switch: the plugin pings
-cronheart.com every five minutes and on every individual event you
-register; if the pings stop, cronheart alerts you (email, Telegram,
-Slack, Discord, or webhook).
+Cronheart turns WP-Cron into a **dead-man switch**: the plugin pings
+[cronheart.com](https://cronheart.com) every five minutes and on
+every individual event you register. If the pings stop, cronheart
+alerts you via email, Telegram, Slack, Discord, or a custom webhook.
 
 = What it does =
 
 * **Site heartbeat.** A 5-minute custom WP-Cron event whose only job
-  is to ping cronheart. Proves WP-Cron itself is alive.
+  is to ping cronheart. Proves WP-Cron itself is alive on this site.
 * **Per-event monitoring.** Register any scheduled hook for
   start / success / fail pings with one PHP one-liner:
   `cronheart_monitor( 'my_nightly_report', 'xxxxxxxx-…' );`
-* **PHP fatal capture.** When a scheduled callback fatals, the fail
-  ping body includes the `error_get_last()` summary so the cronheart
-  dashboard shows the cause without tailing `debug.log`.
-* **Never breaks WP-Cron.** Every network / HTTP failure is folded
-  into a logged warning — a broken cronheart backend cannot punish
-  the host scheduler.
+* **PHP fatal-error capture.** When a scheduled callback fatals or
+  throws, the fail-ping body includes the `error_get_last()`
+  summary — the cronheart dashboard shows the cause without you
+  tailing `debug.log`.
+* **Settings page.** A read-only "Monitored events" table at
+  Settings → Cronheart shows every hook the plugin is watching and
+  where its UUID came from (constant, option, filter).
+* **Configuration through `wp-config.php` constants** for production
+  (`CRONHEART_HEARTBEAT_UUID`, `CRONHEART_EVENT_<HOOK>_UUID`), with
+  admin-UI fallback for sites where editing `wp-config.php` is not
+  practical.
 
-= Status =
+= Never breaks WP-Cron =
 
-This is a pre-release scaffold (v0.1.0 — GitHub-only). The full
-WordPress.org submission text and screenshots land in v0.1.1+ once
-the API has stabilised against early GitHub adopters.
+The plugin's hard contract: a broken cronheart backend, an
+unreachable network, a misbehaving PSR-18 HTTP client — none of
+them may cause WP-Cron to fail. Every network / HTTP error is
+swallowed into a logged warning. If cronheart goes down for a
+day, your `wp_schedule_event` callbacks still run normally; you
+just stop seeing pings on the dashboard.
 
-Source, issues, and roadmap:
-https://github.com/alexander-po/cronheart-wp
+= External services =
+
+This plugin sends HTTP requests to [cronheart.com](https://cronheart.com)
+on every scheduled WP-Cron run, but **only when you supply a
+monitor UUID**. Without configuration the plugin loads and does
+nothing — no telemetry, no usage statistics, no anonymous reports.
+
+The exact data sent per ping:
+
+* The per-monitor UUID you configured (path segment).
+* A short body excerpt — capped at 10 KB — containing either an
+  exception summary (for `fail` pings) or nothing (for `start` /
+  `success` / `heartbeat`).
+* The plugin / SDK version in a `User-Agent` header.
+
+[Cronheart.com Terms of Service](https://cronheart.com/legal/terms) ·
+[Privacy policy](https://cronheart.com/legal/privacy)
+
+= Open source =
+
+Source code and issue tracker:
+[github.com/alexander-po/cronheart-wp](https://github.com/alexander-po/cronheart-wp).
+
+The plugin wraps the
+[`cron-monitor/php-sdk`](https://github.com/alexander-po/cron-monitor-php)
+PHP package (also open source, MIT-licensed). Both projects are
+maintained independently.
 
 == Installation ==
 
-1. Download the latest `cronheart.zip` from
-   https://github.com/alexander-po/cronheart-wp/releases
-2. WP Admin → Plugins → Add New → Upload Plugin → select the zip.
-3. Activate.
-4. Create a monitor at https://cronheart.com, copy the UUID, and
-   either define `CRONHEART_HEARTBEAT_UUID` in `wp-config.php`
-   (recommended) or paste it under Settings → Cronheart.
+1. Install the plugin: **WP Admin → Plugins → Add New →** search for
+   "Cronheart" → **Install Now → Activate.** Or upload
+   `cronheart.zip` from a GitHub release.
+2. Sign up at [cronheart.com](https://cronheart.com) and create a
+   monitor for your site's heartbeat. Copy the monitor UUID from
+   the dashboard.
+3. Configure the UUID. Either:
+   * **Recommended:** add to `wp-config.php`:
+     `define( 'CRONHEART_HEARTBEAT_UUID', 'xxxxxxxx-…' );`
+   * **Or:** paste the UUID under **Settings → Cronheart** in
+     the WP admin.
+4. Done. Within five minutes you should see the first `heartbeat`
+   ping on the cronheart dashboard.
+
+For per-event monitoring (a specific scheduled hook, not just the
+site heartbeat), register the hook from a plugin / theme /
+mu-plugin:
+
+`add_action( 'plugins_loaded', function () {
+    cronheart_monitor( 'my_nightly_report', 'xxxxxxxx-…' );
+}, 1 );`
+
+The hook then emits `start` / `success` (or `fail` on a fatal /
+thrown exception) pings on every scheduled run.
+
+== Frequently Asked Questions ==
+
+= Does this work when WP-Cron is disabled (system-cron mode)? =
+
+Yes. If you set `define( 'DISABLE_WP_CRON', true );` and trigger
+`wp-cron.php` from a real system cron, the plugin's
+`heartbeat_tick` action still fires on each run — the trigger
+mechanism is different, the action chain is the same.
+
+= What if my host blocks outgoing HTTPS? =
+
+The plugin will retry once (built-in retry budget) and then log a
+warning to `debug.log`. Your scheduled callbacks still run normally
+— the plugin never raises an exception that could break the cron
+runner. To diagnose, check `wp-content/debug.log` for entries
+beginning with "cron-monitor".
+
+= Do I need a paid cronheart.com account? =
+
+No. Cronheart's free tier covers 20 monitors per account — enough
+for a typical site's heartbeat plus several per-event monitors.
+Paid tiers (Starter / Growth / Scale) raise the cap and unlock
+additional notification channels.
+
+= Where do I find my monitor UUID? =
+
+Sign in at [cronheart.com](https://cronheart.com), open the monitor
+you created, and copy the UUID from the address bar or the "Ping
+URL" block on the monitor page.
+
+= What happens to my scheduled jobs if cronheart.com is unreachable? =
+
+Nothing. The plugin catches every network / HTTP error from the
+SDK and logs a warning — your `wp_schedule_event` callbacks
+continue to run. You will stop seeing pings on the cronheart
+dashboard, and after the configured grace period cronheart sends
+you the down-alert. When cronheart comes back the next successful
+ping resolves the incident automatically.
+
+= Does the plugin track or report anything about my site? =
+
+No. The plugin sends a ping to cronheart only when you have
+configured a monitor UUID. The ping payload is the UUID, an
+optional short body excerpt (capped at 10 KB), and the
+SDK's `User-Agent` header. There is no anonymous-statistics
+beacon, no plugin-usage telemetry, no calls to any third-party
+analytics service.
+
+= Can I point the plugin at a non-production cronheart deployment
+(staging / private / self-hosted)? =
+
+Yes. Define `CRONHEART_ENDPOINT` in `wp-config.php` with the URL
+of your alternate deployment. For plain `http://` endpoints
+(local development, private VPNs without TLS) also set
+`CRONHEART_ALLOW_INSECURE_ENDPOINT` to `true`. With both unset,
+the plugin pings the production cronheart.com over HTTPS.
+
+= Where can I report bugs or request features? =
+
+Open an issue on
+[GitHub](https://github.com/alexander-po/cronheart-wp/issues).
+
+== Screenshots ==
+
+1. The plugin's settings page at **Settings → Cronheart**:
+   site-heartbeat UUID field plus the read-only monitored-events
+   table.
+2. The cronheart.com dashboard listing the configured monitors
+   and their last-ping timestamps.
+3. A monitor detail view on cronheart.com after the plugin has
+   reported a heartbeat + a successful per-event run.
 
 == Changelog ==
+
+= 0.1.2 =
+* WordPress.org submission readiness: full readme.txt
+  (Description, FAQ, Screenshots, External-services disclosure),
+  version bump from 0.1.1.
+* No code changes — pure metadata polish for the Plugin Directory
+  submission.
 
 = 0.1.1 =
 * Endpoint override: `CRONHEART_ENDPOINT` constant and
@@ -74,8 +203,8 @@ https://github.com/alexander-po/cronheart-wp
   the v0.1.0 behaviour.
 
 = 0.1.0 =
-* Initial scaffold (GitHub-only release; WP.org submission deferred
-  to v0.1.1+).
+* Initial scaffold (GitHub-only release; WP.org submission
+  deferred to v0.1.2+).
 * Site-wide heartbeat layer with a 5-minute custom schedule.
 * Per-event monitoring with `cronheart_monitor()` helper and
   `cronheart_monitor_map` filter.
@@ -84,3 +213,12 @@ https://github.com/alexander-po/cronheart-wp
 * Admin page at Settings → Cronheart for sites without
   `wp-config.php` access.
 * PHP fatal-error capture for the fail-ping body.
+
+== Upgrade Notice ==
+
+= 0.1.2 =
+WordPress.org metadata polish only. Safe to upgrade.
+
+= 0.1.1 =
+Adds opt-in endpoint override. Existing installs are unaffected —
+the default endpoint remains https://cronheart.com.
