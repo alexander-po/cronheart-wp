@@ -11,6 +11,7 @@ use Cronheart\WP\Config\Resolver;
 use Cronheart\WP\Hooks\HeartbeatHandler;
 use Cronheart\WP\Hooks\HeartbeatScheduler;
 use Cronheart\WP\Hooks\PerEventInstrumentation;
+use CronMonitor\Client\Configuration;
 
 /**
  * Plugin entry point, called from `cronheart.php`.
@@ -36,7 +37,7 @@ final class Plugin
     public function boot(): void
     {
         $resolver = self::buildResolver();
-        $client = new Client();
+        $client = new Client(self::buildSdkConfiguration($resolver));
         $heartbeat = new HeartbeatHandler($resolver, $client);
         $perEvent = self::buildPerEventInstrumentation($resolver, $client);
 
@@ -76,10 +77,48 @@ final class Plugin
     private static function buildResolver(): Resolver
     {
         return new Resolver(
-            constantReader: static fn (string $name): ?string => \defined($name) ? (string) \constant($name) : null,
+            // Return PHP's native constant value (string / bool / int /
+            // …) rather than coercing to string — the resolver needs
+            // the native type for `allowInsecureEndpoint()` which
+            // accepts `define('…', true)` directly.
+            constantReader: static fn (string $name) => \defined($name) ? \constant($name) : null,
             optionReader: static fn (string $name) => get_option($name, null),
             filterApplier: static fn (string $name, array $value) => apply_filters($name, $value),
         );
+    }
+
+    /**
+     * Build the SDK `Configuration` from the resolver's endpoint and
+     * allow-insecure values. Falls back to `null` when the resolver
+     * has nothing to say — `Client::__construct(null)` then uses
+     * `CronMonitorClient::create()` which applies the SDK's defaults
+     * (production `https://cronheart.com`).
+     *
+     * If the user misconfigures the endpoint (plain `http://` without
+     * allow-insecure, malformed URL), the SDK's Configuration
+     * constructor throws `\InvalidArgumentException`. We catch and
+     * fall back to defaults so the plugin keeps booting — the WP-Cron
+     * run must complete even if monitoring is unreachable. The
+     * misconfiguration surfaces through the admin notice path in
+     * v0.1.1+; for v0.1.0, the silent fallback keeps the host site
+     * functional.
+     */
+    private static function buildSdkConfiguration(Resolver $resolver): ?Configuration
+    {
+        $endpoint = $resolver->endpoint();
+        $allowInsecure = $resolver->allowInsecureEndpoint();
+        if (null === $endpoint && !$allowInsecure) {
+            return null;
+        }
+
+        try {
+            return new Configuration(
+                endpoint: $endpoint ?? Configuration::DEFAULT_ENDPOINT,
+                allowInsecureEndpoint: $allowInsecure,
+            );
+        } catch (\InvalidArgumentException) {
+            return null;
+        }
     }
 
     /**

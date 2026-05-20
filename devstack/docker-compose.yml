@@ -1,0 +1,91 @@
+# Local end-to-end smoke stack for cronheart-wp.
+#
+# This base compose file works in **production-mode smoke**: WP + MySQL
+# come up and the plugin pings the real cronheart.com over the
+# internet. No backend network required.
+#
+# For **local-backend-mode smoke** (maintainers only — requires
+# checkout access to the closed-source `cron-monitor` repository),
+# layer the override file:
+#
+#     docker compose \
+#       -f devstack/docker-compose.yml \
+#       -f devstack/docker-compose.local.yml \
+#       up -d
+#
+# That override adds the `cronheart-backend` external network to the
+# WP / WP-CLI services so they can resolve the backend at the
+# internal hostname `http://app`.
+#
+# See README.md → "End-to-end smoke testing" for the full flow,
+# including pre-registration SQL for the local-mode UUIDs.
+
+services:
+  wp-mysql:
+    image: mysql:8.0
+    container_name: cronheart-wp-mysql
+    environment:
+      MYSQL_DATABASE: wordpress
+      MYSQL_USER: wordpress
+      MYSQL_PASSWORD: wordpress
+      MYSQL_ROOT_PASSWORD: rootpass
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uwordpress", "-pwordpress"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  wordpress:
+    image: wordpress:6.7-php8.2-apache
+    container_name: cronheart-wp-wordpress
+    depends_on:
+      wp-mysql:
+        condition: service_healthy
+    ports:
+      # Host port 8082 because cronheart backend (when present)
+      # already binds 8081.
+      - "8082:80"
+    environment:
+      WORDPRESS_DB_HOST: wp-mysql:3306
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: wordpress
+      WORDPRESS_DB_NAME: wordpress
+      # Disable WP-Cron's request-driven trigger so the smoke script
+      # can drive it deterministically through WP-CLI. The real
+      # `wp_schedule_event` registration still works; only the
+      # automatic spawn-on-request is suppressed.
+      WORDPRESS_CONFIG_EXTRA: |
+        define( 'DISABLE_WP_CRON', true );
+        define( 'WP_DEBUG', true );
+        define( 'WP_DEBUG_LOG', true );
+    volumes:
+      - wordpress-data:/var/www/html
+      # Mount the built plugin zip so WP-CLI can install it from a
+      # well-known path inside the container.
+      - ../build/cronheart.zip:/tmp/cronheart.zip:ro
+
+  wp-cli:
+    image: wordpress:cli-php8.2
+    container_name: cronheart-wp-cli
+    depends_on:
+      - wordpress
+    user: "33:33"
+    environment:
+      WORDPRESS_DB_HOST: wp-mysql:3306
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: wordpress
+      WORDPRESS_DB_NAME: wordpress
+    volumes:
+      - wordpress-data:/var/www/html
+      - ../build/cronheart.zip:/tmp/cronheart.zip:ro
+    # Keep the container long-lived so `docker compose exec wp-cli wp ...`
+    # works without re-creating it for every command.
+    entrypoint: ["tail", "-f", "/dev/null"]
+    working_dir: /var/www/html
+
+networks:
+  default:
+    name: cronheart-wp-default
+
+volumes:
+  wordpress-data:
