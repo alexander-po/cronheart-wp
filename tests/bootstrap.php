@@ -9,10 +9,9 @@ declare(strict_types=1);
  * both the plugin's own `Cronheart\WP\…` namespace and the unmodified
  * `CronMonitor\…` SDK namespace from vendor/.
  *
- * Vendor namespace prefixing (Strauss / php-scoper) is deferred to
- * v0.1.1+ when we submit to wordpress.org and conflict-isolation
- * becomes meaningful. For the v0.1.0 GitHub-only release, vendor/
- * autoload is sufficient.
+ * Vendor namespace prefixing (Strauss / php-scoper) is deferred —
+ * see `src/Api/Client.php` for the rationale. The unprefixed vendor
+ * autoload is sufficient for the test suite.
  *
  * Brain Monkey, which mocks WordPress core functions, is set up
  * per-test class (in `setUp()`/`tearDown()`) rather than globally —

@@ -21,12 +21,11 @@ use CronMonitor\Client\PingResult;
  * consumers.
  *
  * **Vendor namespace prefixing** (Strauss / php-scoper) is deferred
- * to v0.1.1+ alongside the wordpress.org submission. Until then,
- * the SDK ships under its canonical `CronMonitor\…` namespace; if a
- * future plugin bundles the same SDK without prefixing, PHP's
- * autoloader resolves to whichever was registered first. The risk
- * is low because no other plugin currently ships
- * `cron-monitor/php-sdk`.
+ * pending a first reported collision. The SDK ships under its
+ * canonical `CronMonitor\…` namespace; if a future plugin bundles
+ * the same SDK without prefixing, PHP's autoloader resolves to
+ * whichever was registered first. Risk is low because no other
+ * plugin currently ships `cron-monitor/php-sdk`.
  *
  * Belt-and-suspenders try/catch wraps every call. The SDK contract
  * says it does not throw, but a custom PSR-18 transport bound through

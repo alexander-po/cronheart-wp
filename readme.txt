@@ -4,7 +4,7 @@ Tags: cron, wp-cron, monitoring, healthcheck, deadman-switch
 Requires at least: 6.0
 Tested up to: 6.7
 Requires PHP: 8.2
-Stable tag: 0.1.3
+Stable tag: 0.1.4
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -180,6 +180,22 @@ Open an issue on
 
 == Changelog ==
 
+= 0.1.4 =
+* Pre-submission cleanup before the WordPress.org Plugin Directory
+  review. No behaviour changes — pings, hooks, and admin UI all
+  identical to 0.1.3.
+* Release zip no longer ships `CLAUDE.md` and similar
+  contributor-only docs from vendored packages; the bundled tree
+  is now scoped to what the runtime actually needs.
+* `LICENSE` gained an explicit project copyright header
+  (`cronheart-wp — Copyright (C) 2026 Alexander Palazok`); the
+  GPL-2.0 preamble follows unchanged.
+* CHANGELOG.md hygiene: missing `[0.1.1]` section header restored;
+  internal sprint-tracking term ("Sprint D") removed from the
+  public 0.1.3 entry; stale "deferred to v0.1.1+" notes on vendor
+  namespace prefixing rewritten to reflect the current "deferred
+  pending first reported collision" stance.
+
 = 0.1.3 =
 * WordPress.org Plugin Check fixes: added `defined('ABSPATH')`
   direct-access guards to every PHP file the static analyser
@@ -226,6 +242,9 @@ Open an issue on
 * PHP fatal-error capture for the fail-ping body.
 
 == Upgrade Notice ==
+
+= 0.1.4 =
+Pre-submission cleanup only — no behaviour changes. Safe to upgrade.
 
 = 0.1.3 =
 WordPress.org Plugin Check fixes only — no behaviour changes.

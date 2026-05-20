@@ -11,10 +11,11 @@ final class ClientTest extends \PHPUnit\Framework\TestCase
 {
     public function test_client_is_constructible_with_default_configuration(): void
     {
-        // Smoke test: the Strauss-prefixed SDK resolves through the
-        // plugin's autoloader, and `CronMonitorClient::create()`
-        // builds with no arguments (default SaaS endpoint + bundled
-        // cURL transport).
+        // Smoke test: the bundled SDK resolves through the plugin's
+        // autoloader (no Strauss prefixing yet — deferred pending a
+        // first reported collision, see Client.php docblock), and
+        // `CronMonitorClient::create()` builds with no arguments
+        // (default SaaS endpoint + bundled cURL transport).
         $client = new Client();
 
         self::assertInstanceOf(Client::class, $client);
