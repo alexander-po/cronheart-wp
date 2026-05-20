@@ -8,7 +8,30 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 _Nothing yet — open a PR and add your entry under the appropriate subsection._
 
-## [0.1.1] — 2026-05-20
+## [0.1.2] — 2026-05-20
+
+WordPress.org submission readiness. No code changes — pure
+metadata polish so the plugin can be submitted to the Plugin
+Directory at https://wordpress.org/plugins/cronheart/ with a
+complete, validating `readme.txt`.
+
+### Changed
+
+- **`readme.txt` major rewrite.** Expanded from the v0.1.0
+  placeholder to a full WordPress.org Plugin Directory entry:
+  Description with "What it does" / "Never breaks WP-Cron" /
+  External-services disclosure sections; Installation walk-through;
+  Frequently Asked Questions block (≥7 entries); Screenshots
+  manifest (3 entries; PNG assets live in the WP.org SVN under
+  `assets/`, not in this git tree); Upgrade Notice section.
+- Bumped plugin header `Version` from `0.1.1` to `0.1.2`.
+- Set `readme.txt` `Stable tag: 0.1.2` (was `trunk` in v0.1.0/v0.1.1).
+  WordPress.org's readme validator now rejects `trunk` as the stable
+  marker — the field must name a concrete version so users can roll
+  back to a specific SVN tag if a future release regresses. The tag
+  becomes meaningful once we create `tags/0.1.2/` in SVN after the
+  plugin is approved; until then, the WP.org infrastructure falls
+  back to trunk for the download.
 
 Patch release that adds endpoint-override support and the local
 smoke harness that uses it. No breaking changes — plugins not
