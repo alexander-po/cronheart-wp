@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Cronheart\WP;
 
+use Cronheart\WP\Admin\EventList;
+use Cronheart\WP\Admin\SettingsPage;
 use Cronheart\WP\Api\Client;
 use Cronheart\WP\Config\Resolver;
 use Cronheart\WP\Hooks\HeartbeatHandler;
@@ -56,6 +58,12 @@ final class Plugin
         add_action('plugins_loaded', static function () use ($perEvent, $resolver): void {
             $perEvent->register($resolver->eventHookNames());
         }, \PHP_INT_MAX);
+
+        // Admin Settings → Cronheart. Registering the menu and
+        // settings hooks outside an admin request is harmless — the
+        // hooks only fire on admin page loads — so we skip the
+        // `is_admin()` guard.
+        (new SettingsPage(new EventList($resolver)))->register();
     }
 
     /**

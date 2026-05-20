@@ -42,6 +42,20 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 - `Resolver::eventHookNames()` enumerates hooks to instrument from
   the union of the `cronheart_event_map` option keys and the
   `cronheart_monitor_map` filter keys.
+- **Admin Settings page** at `Settings → Cronheart`
+  (`Admin\SettingsPage`): one editable field for the site heartbeat
+  UUID plus a read-only "Monitored events" table fed by
+  `Admin\EventList`. Per-event editing through the UI is deferred to
+  v0.1.1 — for v0.1.0 operators wire those through
+  `cronheart_monitor()` calls or `CRONHEART_EVENT_<HOOK>_UUID`
+  constants. Security: `current_user_can( 'manage_options' )` guard
+  on render, Settings API handles CSRF nonces, UUID input validated
+  by `sanitize_uuid` with an `add_settings_error` notice surfacing
+  rejections instead of silent data loss, all echoed output runs
+  through `esc_html` / `esc_attr` per WPCS. When
+  `CRONHEART_HEARTBEAT_UUID` is defined in wp-config.php the page
+  renders a note explaining that the constant takes precedence so
+  saved values are ignored at ping time.
 
 ### Known limitations
 

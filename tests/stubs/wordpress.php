@@ -95,4 +95,76 @@ namespace {
     {
         return false;
     }
+
+    function current_user_can(string $capability): bool
+    {
+        return false;
+    }
+
+    function add_options_page(string $page_title, string $menu_title, string $capability, string $menu_slug, callable $callback = null, int $position = null): string|false
+    {
+        return false;
+    }
+
+    /**
+     * @param array<string, mixed> $args
+     */
+    function register_setting(string $option_group, string $option_name, array $args = []): void
+    {
+    }
+
+    function add_settings_section(string $id, string $title, ?callable $callback, string $page): void
+    {
+    }
+
+    /**
+     * @param array<string, mixed> $args
+     */
+    function add_settings_field(string $id, string $title, callable $callback, string $page, string $section = 'default', array $args = []): void
+    {
+    }
+
+    function settings_fields(string $option_group): void
+    {
+    }
+
+    function do_settings_sections(string $page): void
+    {
+    }
+
+    function submit_button(string $text = '', string $type = 'primary', string $name = 'submit', bool $wrap = true): void
+    {
+    }
+
+    function add_settings_error(string $setting, string $code, string $message, string $type = 'error'): void
+    {
+    }
+
+    /**
+     * @return never
+     */
+    function wp_die(string $message = '', string $title = '', mixed $args = []): void
+    {
+        throw new \RuntimeException($message);
+    }
+
+    function esc_html(string $text): string
+    {
+        return $text;
+    }
+
+    function esc_html__(string $text, string $domain = 'default'): string
+    {
+        return $text;
+    }
+
+    function esc_attr(string $text): string
+    {
+        return $text;
+    }
+
+    function __(string $text, string $domain = 'default'): string
+    {
+        return $text;
+    }
 }
