@@ -3,7 +3,7 @@
  * Plugin Name:       Cronheart
  * Plugin URI:        https://github.com/alexander-po/cronheart-wp
  * Description:       Monitors WP-Cron with cronheart.com. Detects when scheduled events stop firing — heartbeat for the whole site plus per-event start/success/fail pings.
- * Version:           0.1.2
+ * Version:           0.1.3
  * Requires at least: 6.0
  * Requires PHP:      8.2
  * Author:            Aliaksandr Palazok
@@ -35,6 +35,24 @@ if ( file_exists( $cronheart_vendor_autoload ) ) {
 	require_once $cronheart_vendor_autoload;
 }
 unset( $cronheart_vendor_autoload );
+
+/*
+ * The `cronheart_monitor()` global helper used to be wired through
+ * Composer's `autoload.files` directive. That made the function
+ * available on every `require vendor/autoload.php`, including from
+ * test bootstraps that have not yet defined `ABSPATH` — at which
+ * point the file's own `defined('ABSPATH') || exit;` guard would
+ * silently terminate the test runner. Loading the helper explicitly
+ * from this plugin entry point keeps the function's availability
+ * scoped to a real WordPress runtime (where `ABSPATH` is defined
+ * by `wp-load.php` long before plugins load) and lets the same
+ * guard live unmodified in the source file.
+ */
+$cronheart_helper = __DIR__ . '/src/Helpers/monitor.php';
+if ( file_exists( $cronheart_helper ) ) {
+	require_once $cronheart_helper;
+}
+unset( $cronheart_helper );
 
 if ( ! class_exists( \Cronheart\WP\Plugin::class ) ) {
 	// Plugin source missing — typically a misconfigured install

@@ -4,7 +4,7 @@ Tags: cron, wp-cron, monitoring, healthcheck, deadman-switch
 Requires at least: 6.0
 Tested up to: 6.7
 Requires PHP: 8.2
-Stable tag: 0.1.2
+Stable tag: 0.1.3
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -180,6 +180,17 @@ Open an issue on
 
 == Changelog ==
 
+= 0.1.3 =
+* WordPress.org Plugin Check fixes: added `defined('ABSPATH')`
+  direct-access guards to every PHP file the static analyser
+  reaches; refactored the monitored-events table render so the
+  escape calls are direct printf arguments (the previous
+  pre-assigned variable was flagged by EscapeOutput); shipped
+  `composer.json` / `composer.lock` alongside `vendor/` in the
+  release zip so the bundled dependencies are reproducible.
+* No behaviour changes — pings, hooks, and admin UI all
+  identical to 0.1.2.
+
 = 0.1.2 =
 * WordPress.org submission readiness: full readme.txt
   (Description, FAQ, Screenshots, External-services disclosure),
@@ -215,6 +226,10 @@ Open an issue on
 * PHP fatal-error capture for the fail-ping body.
 
 == Upgrade Notice ==
+
+= 0.1.3 =
+WordPress.org Plugin Check fixes only — no behaviour changes.
+Safe to upgrade.
 
 = 0.1.2 =
 WordPress.org metadata polish only. Safe to upgrade.

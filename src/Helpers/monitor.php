@@ -4,10 +4,26 @@ declare(strict_types=1);
 
 /*
  * Global helper for plugin developers wiring per-event cron-monitor
- * coverage from PHP. Loaded through Composer `autoload.files` so it
- * is available the moment vendor/autoload.php is required, with no
- * `add_action('plugins_loaded', ...)` ceremony at the call site.
+ * coverage from PHP.
+ *
+ * Loaded via explicit `require_once` from `cronheart.php` in the
+ * WordPress runtime, and from `tests/bootstrap.php` for the unit
+ * suite. Earlier iterations wired the file through Composer's
+ * `autoload.files` directive, which made the function available the
+ * instant `vendor/autoload.php` ran — but that path triggered the
+ * ABSPATH guard below before PHPUnit could process its own
+ * bootstrap, and Plugin Check's strict regex on the guard ruled out
+ * a `'cli' === PHP_SAPI` escape hatch. The explicit-require path is
+ * the simpler resolution: the helper is available the moment the
+ * plugin boots in production, and tests opt in deliberately.
  */
+
+// Direct-access guard. WP.org's Plugin Check expects the canonical
+// `defined('ABSPATH') || exit;` shape on every PHP file in the
+// plugin tree, including this one. The check's regex match is
+// strict — see comments in `Plugin.php` / the v0.1.3 CHANGELOG
+// entry for the full diagnosis.
+\defined('ABSPATH') || exit;
 
 if (!\function_exists('cronheart_monitor')) {
     /**
@@ -31,10 +47,12 @@ if (!\function_exists('cronheart_monitor')) {
      * semantics and the heartbeat layer's empty-constant policy.
      *
      * Calling multiple times for the same hook is harmless; the last
-     * call's UUID wins (Composer's `files` autoload guarantees the
-     * function is defined once, but each call adds a new filter
-     * closure — later closures see earlier values and overwrite
-     * deterministically).
+     * call's UUID wins. The `function_exists()` guard around the
+     * definition keeps the symbol unique across explicit `require_once`
+     * calls from `cronheart.php` and `tests/bootstrap.php`; each
+     * `cronheart_monitor()` invocation then adds a new filter closure,
+     * and later closures see earlier values and overwrite
+     * deterministically.
      */
     function cronheart_monitor(string $hook_name, ?string $monitor_uuid = null): void
     {

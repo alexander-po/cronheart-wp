@@ -36,10 +36,7 @@
     "autoload": {
         "psr-4": {
             "Cronheart\\WP\\": "src/"
-        },
-        "files": [
-            "src/Helpers/monitor.php"
-        ]
+        }
     },
     "autoload-dev": {
         "psr-4": {
