@@ -1,10 +1,10 @@
 === Cronheart ===
-Contributors: alexanderpo
+Contributors: cronmonitor
 Tags: cron, wp-cron, monitoring, healthcheck, deadman-switch
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 8.2
-Stable tag: 0.1.5
+Stable tag: 0.1.6
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -65,9 +65,6 @@ The exact data sent per ping:
   exception summary (for `fail` pings) or nothing (for `start` /
   `success` / `heartbeat`).
 * The plugin / SDK version in a `User-Agent` header.
-
-[Cronheart.com Terms of Service](https://cronheart.com/legal/terms) ·
-[Privacy policy](https://cronheart.com/legal/privacy)
 
 = Open source =
 
@@ -180,6 +177,24 @@ Open an issue on
 
 == Changelog ==
 
+= 0.1.6 =
+* Plugin Directory review round 1 fixes. No behaviour changes —
+  pings, hooks, admin UI all identical to 0.1.5.
+* Removed two `cronheart.com/legal/*` links from the readme that
+  responded with HTTP 404. The "External services" section in
+  this readme already provides a full data-flow disclosure;
+  stand-alone Terms / Privacy pages will be linked back when
+  the corresponding cronheart.com URLs are live.
+* `Contributors:` set to `cronmonitor` (the WordPress.org account
+  that submitted the plugin); previously held a stale GitHub
+  handle (`alexanderpo`) that did not match any WP.org user.
+* Release zip no longer ships `vendor/bin/cron-monitor` or
+  `vendor/cron-monitor/php-sdk/bin/cron-monitor` — those CLI
+  binaries are part of the SDK's local-dev tooling and have no
+  use inside a WordPress plugin. `bin/build-release.sh` now
+  strips every `vendor/*/bin/` directory at zip time. PSR-4
+  autoload of the SDK's runtime classes is unaffected.
+
 = 0.1.5 =
 * Bump "Tested up to" from 6.7 to 6.9. WordPress.org's automated
   scan blocks submission when the readme's "Tested up to" lags
@@ -252,6 +267,10 @@ Open an issue on
 * PHP fatal-error capture for the fail-ping body.
 
 == Upgrade Notice ==
+
+= 0.1.6 =
+Plugin Directory review round 1 metadata fixes. No code changes.
+Safe to upgrade.
 
 = 0.1.5 =
 "Tested up to" bump to 6.9. No code changes. Safe to upgrade.

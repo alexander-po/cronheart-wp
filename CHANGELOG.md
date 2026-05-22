@@ -8,6 +8,45 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 _Nothing yet — open a PR and add your entry under the appropriate subsection._
 
+## [0.1.6] — 2026-05-22
+
+WordPress.org Plugin Directory review **round 1** response. The
+manual reviewer (volunteer team) flagged three issues against the
+v0.1.5 zip; this release clears all three. No behaviour changes —
+pings, hooks, admin UI all identical to 0.1.5. Safe to upgrade.
+
+### Changed
+
+- **Removed two `cronheart.com/legal/*` links from `readme.txt`.**
+  The reviewer's automated URL probe found that the Terms of
+  Service and Privacy Policy URLs at
+  `https://cronheart.com/legal/terms` and
+  `https://cronheart.com/legal/privacy` both respond with HTTP
+  404. The readme's "External services" section already gives a
+  complete per-ping data disclosure (UUID in path, optional body
+  excerpt capped at 10 KB on fail, User-Agent header) and
+  declares the no-telemetry policy, so the standalone legal-page
+  links were redundant rather than load-bearing. They'll be
+  restored when the corresponding cronheart.com pages go live.
+- **`Contributors:` set to `cronmonitor`.** The reviewer's
+  static analysis flagged that the previously listed `alexanderpo`
+  is not the WordPress.org username that owns the `cronheart`
+  plugin slug. The dedicated `cronmonitor` account is the
+  WordPress.org identity used for plugin publishing and is now
+  the sole declared contributor.
+- **Stripped Composer CLI bin shims from the release zip.**
+  `bin/build-release.sh` now deletes every `vendor/*/bin/`
+  directory before zipping, removing
+  `vendor/bin/cron-monitor` and
+  `vendor/cron-monitor/php-sdk/bin/cron-monitor` from the
+  distributed plugin tree. Those are SDK-side dev tooling
+  shims, not runtime artefacts — PSR-4 autoload of the SDK's
+  classes is entirely unaffected by their absence. The WP.org
+  reviewer specifically called the `cronheart/vendor/bin/*`
+  paths out as "not permitted files".
+- Bumped plugin header `Version` from `0.1.5` to `0.1.6`; bumped
+  `readme.txt` `Stable tag` to `0.1.6`.
+
 ## [0.1.5] — 2026-05-20
 
 `Tested up to: 6.9` bump. No code changes — pings, hooks, admin

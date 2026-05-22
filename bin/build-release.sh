@@ -69,7 +69,15 @@ cp -R vendor "$STAGE_DIR/"
 # operators, and have no business in the runtime distribution.
 # `LICENSE` / `LICENSE.md` deliberately stay (third-party
 # attribution requirement).
-find "$STAGE_DIR/vendor" -type d \( -name tests -o -name test -o -name docs -o -name doc -o -name examples -o -name '.github' \) -exec rm -rf {} +
+# `bin/` directories specifically: Composer's `vendor/bin/` (CLI
+# shim) and the underlying `vendor/*/bin/` executables (e.g.
+# `vendor/cron-monitor/php-sdk/bin/cron-monitor`) are CLI tools
+# meant for SDK consumers' local dev workflow — a WordPress
+# plugin never invokes them. The WP.org review team explicitly
+# flags `cronheart/vendor/bin/*` paths as "not permitted files",
+# so we strip them here. PSR-4 autoload of the SDK's classes is
+# unaffected.
+find "$STAGE_DIR/vendor" -type d \( -name tests -o -name test -o -name docs -o -name doc -o -name examples -o -name '.github' -o -name bin \) -exec rm -rf {} +
 find "$STAGE_DIR/vendor" -type f \( -name 'phpunit.*' -o -name 'phpstan.*' -o -name '.php-cs-fixer*' -o -name 'psalm.*' -o -name '*.dist' -o -name '.editorconfig' -o -name '.gitignore' -o -name '.gitattributes' \) -delete
 find "$STAGE_DIR/vendor" -type f \( -name 'CLAUDE.md' -o -name 'AGENTS.md' -o -name 'CONTRIBUTING.md' -o -name 'SECURITY.md' -o -name 'UPGRADING.md' -o -name 'MAINTAINING.md' -o -name 'CODE_OF_CONDUCT.md' -o -name '.scrutinizer.yml' -o -name '.travis.yml' -o -name '.circleci' \) -delete
 
