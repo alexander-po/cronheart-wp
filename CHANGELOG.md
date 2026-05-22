@@ -8,6 +8,23 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 _Nothing yet — open a PR and add your entry under the appropriate subsection._
 
+## [0.1.8] — 2026-05-22
+
+`Tested up to: 7.0` bump. No code changes — pings, hooks, admin UI all identical to 0.1.7. Safe to upgrade.
+
+This is the same class of release as v0.1.5 — WordPress.org's automated scan rejected the v0.1.7 re-upload because WordPress 7.0 had shipped during the review cycle and the readme's "Tested up to" now lagged again:
+
+    readme.txt ERROR: outdated_tested_upto_header:
+    Tested up to: 6.9 < 7.0
+
+The CLAUDE.md "WP-image trap" rule already calls this pattern out — when bumping `readme.txt` `Tested up to:`, also bump `devstack/docker-compose.yml` so the next local Plugin Check run catches the lag before WP.org does. Followed it this time.
+
+### Changed
+
+- **`readme.txt` "Tested up to"** bumped from `6.9` to `7.0`.
+- **`devstack/docker-compose.yml`** WordPress image bumped from `wordpress:6.9-php8.2-apache` to `wordpress:7.0-php8.2-apache`.
+- Bumped plugin header `Version` from `0.1.7` to `0.1.8`; bumped `readme.txt` `Stable tag` to `0.1.8`.
+
 ## [0.1.7] — 2026-05-22
 
 Restore the Terms of Service / Privacy policy links in `readme.txt`. v0.1.6's response to the WP.org reviewer was over-cautious: when the automated URL probe flagged `cronheart.com/legal/terms` and `cronheart.com/legal/privacy` as HTTP 404, the right fix was to point at the correct paths (`cronheart.com/terms`, `cronheart.com/privacy`, both HTTP 200), not to drop the links entirely. The live legal pages have always been at those shorter paths; the `/legal/*` prefix was simply a wrong assumption I never verified before flagging the URLs as "404 — pages don't exist". v0.1.7 puts the links back, pointing at the right URLs.
