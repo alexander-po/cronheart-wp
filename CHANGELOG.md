@@ -8,6 +8,17 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 _Nothing yet — open a PR and add your entry under the appropriate subsection._
 
+## [0.1.7] — 2026-05-22
+
+Restore the Terms of Service / Privacy policy links in `readme.txt`. v0.1.6's response to the WP.org reviewer was over-cautious: when the automated URL probe flagged `cronheart.com/legal/terms` and `cronheart.com/legal/privacy` as HTTP 404, the right fix was to point at the correct paths (`cronheart.com/terms`, `cronheart.com/privacy`, both HTTP 200), not to drop the links entirely. The live legal pages have always been at those shorter paths; the `/legal/*` prefix was simply a wrong assumption I never verified before flagging the URLs as "404 — pages don't exist". v0.1.7 puts the links back, pointing at the right URLs.
+
+No code changes — pings, hooks, admin UI all identical to 0.1.6. Safe to upgrade.
+
+### Changed
+
+- `readme.txt` — restored `[Cronheart.com Terms of Service](https://cronheart.com/terms)` and `[Privacy policy](https://cronheart.com/privacy)` links in the "External services" block (last paragraph). Both URLs verified responding HTTP 200 before commit.
+- Bumped plugin header `Version` from `0.1.6` to `0.1.7`; bumped `readme.txt` `Stable tag` to `0.1.7`.
+
 ## [0.1.6] — 2026-05-22
 
 WordPress.org Plugin Directory review **round 1** response. The

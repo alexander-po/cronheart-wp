@@ -4,7 +4,7 @@ Tags: cron, wp-cron, monitoring, healthcheck, deadman-switch
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 8.2
-Stable tag: 0.1.6
+Stable tag: 0.1.7
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -65,6 +65,9 @@ The exact data sent per ping:
   exception summary (for `fail` pings) or nothing (for `start` /
   `success` / `heartbeat`).
 * The plugin / SDK version in a `User-Agent` header.
+
+[Cronheart.com Terms of Service](https://cronheart.com/terms) ·
+[Privacy policy](https://cronheart.com/privacy)
 
 = Open source =
 
@@ -177,6 +180,17 @@ Open an issue on
 
 == Changelog ==
 
+= 0.1.7 =
+* Restored Terms of Service / Privacy policy links in the readme.
+  The URLs the WP.org reviewer flagged as HTTP 404 in v0.1.5
+  (`cronheart.com/legal/terms`, `cronheart.com/legal/privacy`)
+  were wrong paths — the live pages have always been at
+  `cronheart.com/terms` and `cronheart.com/privacy`. v0.1.6
+  removed the links entirely as the most cautious response to
+  the review feedback; v0.1.7 puts them back, pointing at the
+  correct URLs (both return HTTP 200).
+* No code changes.
+
 = 0.1.6 =
 * Plugin Directory review round 1 fixes. No behaviour changes —
   pings, hooks, admin UI all identical to 0.1.5.
@@ -267,6 +281,10 @@ Open an issue on
 * PHP fatal-error capture for the fail-ping body.
 
 == Upgrade Notice ==
+
+= 0.1.7 =
+Restored Terms / Privacy links with the correct URLs
+(cronheart.com/terms and /privacy). No code changes.
 
 = 0.1.6 =
 Plugin Directory review round 1 metadata fixes. No code changes.
