@@ -2,9 +2,9 @@
 Contributors: cronmonitor
 Tags: cron, wp-cron, monitoring, healthcheck, deadman-switch
 Requires at least: 6.0
-Tested up to: 6.9
+Tested up to: 7.0
 Requires PHP: 8.2
-Stable tag: 0.1.7
+Stable tag: 0.1.8
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -180,6 +180,15 @@ Open an issue on
 
 == Changelog ==
 
+= 0.1.8 =
+* Bump "Tested up to" from 6.9 to 7.0. The v0.1.7 re-upload was
+  rejected by WP.org's automated scan because WordPress 7.0 had
+  shipped between our v0.1.5 submission and the v0.1.7
+  re-upload, and the "Tested up to" header now lagged again.
+  Devstack also moved to `wordpress:7.0-php8.2-apache`; smoke
+  run + Plugin Check re-verified green on 7.0.
+* No code changes.
+
 = 0.1.7 =
 * Restored Terms of Service / Privacy policy links in the readme.
   The URLs the WP.org reviewer flagged as HTTP 404 in v0.1.5
@@ -281,6 +290,9 @@ Open an issue on
 * PHP fatal-error capture for the fail-ping body.
 
 == Upgrade Notice ==
+
+= 0.1.8 =
+"Tested up to" bump to 7.0. No code changes. Safe to upgrade.
 
 = 0.1.7 =
 Restored Terms / Privacy links with the correct URLs
