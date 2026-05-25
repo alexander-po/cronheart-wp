@@ -8,6 +8,22 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 _Nothing yet — open a PR and add your entry under the appropriate subsection._
 
+## [0.1.9] — 2026-05-25
+
+WordPress.org Plugin Directory review **round 2** response. The reviewer manually checked v0.1.8 and flagged a single remaining issue (round 1's legal URLs and `vendor/bin/*` findings are confirmed resolved); this release clears the last one. No code changes — pings, hooks, admin UI all identical to 0.1.8. Safe to upgrade.
+
+The reviewer's static analysis pointed out:
+
+    # WARNING: None of the listed contributors "cronmonitor" is
+    the WordPress.org username of the owner of the plugin "cronheart".
+
+v0.1.7 had changed `Contributors:` from `alexanderpo` to `cronmonitor` based on a misread of which WP.org account actually owned the slug. The slug `cronheart` was claimed and is owned by the `cronheart` WP.org account; every upload (including v0.1.8) shows in the reviewer's dashboard as "File updated by **cronheart**, version 0.1.8". The `cronmonitor` account exists but isn't the slug owner — it's at best a secondary identity, and listing only that account triggers the static-analysis warning.
+
+### Changed
+
+- **`Contributors:`** changed from `cronmonitor` to `cronheart` — the WordPress.org username that actually owns the slug and uploaded all submissions to date. `cronmonitor` is deliberately not included; the user chose to keep the contributors line minimal rather than display a non-owner identity on the Plugin Directory page.
+- Bumped plugin header `Version` from `0.1.8` to `0.1.9`; bumped `readme.txt` `Stable tag` to `0.1.9`.
+
 ## [0.1.8] — 2026-05-22
 
 `Tested up to: 7.0` bump. No code changes — pings, hooks, admin UI all identical to 0.1.7. Safe to upgrade.

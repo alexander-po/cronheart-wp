@@ -1,10 +1,10 @@
 === Cronheart ===
-Contributors: cronmonitor
+Contributors: cronheart
 Tags: cron, wp-cron, monitoring, healthcheck, deadman-switch
 Requires at least: 6.0
 Tested up to: 7.0
 Requires PHP: 8.2
-Stable tag: 0.1.8
+Stable tag: 0.1.9
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -180,6 +180,17 @@ Open an issue on
 
 == Changelog ==
 
+= 0.1.9 =
+* Plugin Directory review round 2 fix. `Contributors:` changed
+  from `cronmonitor` to `cronheart` — the reviewer's static
+  analysis pointed out that the WordPress.org account that
+  actually owns the `cronheart` plugin slug (and uploaded
+  every version including v0.1.8) is `cronheart`, not
+  `cronmonitor`. v0.1.7's switch to `cronmonitor` was a wrong
+  guess at the right owner identity; v0.1.9 puts the actual
+  slug owner in the contributors line.
+* No code changes.
+
 = 0.1.8 =
 * Bump "Tested up to" from 6.9 to 7.0. The v0.1.7 re-upload was
   rejected by WP.org's automated scan because WordPress 7.0 had
@@ -290,6 +301,10 @@ Open an issue on
 * PHP fatal-error capture for the fail-ping body.
 
 == Upgrade Notice ==
+
+= 0.1.9 =
+Plugin Directory review round 2 metadata fix (Contributors set
+to the slug owner). No code changes. Safe to upgrade.
 
 = 0.1.8 =
 "Tested up to" bump to 7.0. No code changes. Safe to upgrade.

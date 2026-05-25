@@ -51,7 +51,15 @@ jobs:
       # under `src/` lives by strict_types + PSR-12, which php-cs-fixer
       # enforces above. WPCS scope is declared in `.phpcs.xml.dist`.
       - run: vendor/bin/phpcs --standard=.phpcs.xml.dist
-      - run: composer audit
+      # Composer 2.7+ defaults `--abandoned=fail`, which exits non-zero
+      # when any installed package (including transitive deps) is marked
+      # abandoned. PHPUnit 10's tree carries two such packages
+      # (`sebastian/code-unit`, `sebastian/code-unit-reverse-lookup`)
+      # that have no upstream replacement and that we can't drop without
+      # losing PHPUnit itself. Switch to `--abandoned=report` so
+      # abandoned packages still surface in the build log, but only
+      # actual security advisories fail the audit job.
+      - run: composer audit --abandoned=report
 
   test:
     name: Test (PHP ${{ matrix.php }}${{ matrix.deps == 'lowest' && ' / lowest deps' || '' }})
