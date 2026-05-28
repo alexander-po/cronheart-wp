@@ -144,8 +144,23 @@ vendor/phpcsstandards/phpcsextra >/dev/null 2>&1
 CI matrix (`.github/workflows/ci.yml`): PHP 8.2 / 8.3 / 8.4. The
 `lint` job on 8.2 covers `composer validate --strict`,
 `check-platform-reqs`, php-cs-fixer, PHPStan, phpcs, and
-`composer audit`. The `test` job runs PHPUnit across the matrix plus a
-`lowest-deps` lane on 8.2.
+`composer audit --abandoned=report`. The `test` job runs PHPUnit
+across the matrix plus a `lowest-deps` lane on 8.2.
+
+### `composer audit` — keep `--abandoned=report`
+
+Composer 2.7+ defaults the `audit` exit code to non-zero whenever any
+installed package — including transitive deps — is marked abandoned
+upstream. PHPUnit 10's tree carries two such packages
+(`sebastian/code-unit`, `sebastian/code-unit-reverse-lookup`) that
+have no upstream replacement and that we can't drop without dropping
+PHPUnit itself. The CI step is pinned to `--abandoned=report` so
+abandoned packages still surface in the build log but only actual
+security advisories gate the audit. Don't "fix" this back to the
+default — it will fail every build the moment a new dep gets
+abandoned, with nothing for us to actually act on. If a real CVE
+shows up, `composer audit` still exits non-zero, that's what we
+care about.
 
 ## Behind a corporate proxy (Netskope)
 
@@ -227,11 +242,27 @@ against the *running* WP version, not wp.org's release feed.
 
 v0.1.4 was bounced for `Tested up to: 6.7 < 6.9` even though local PCP
 passed (devstack was on `wordpress:6.7-php8.2-apache`). v0.1.5 bumped
-both `readme.txt` and `devstack/docker-compose.yml` to WP 6.9.
+both `readme.txt` and `devstack/docker-compose.yml` to WP 6.9. Then
+v0.1.7 was re-uploaded for round-2 review and got bounced *again*
+with `Tested up to: 6.9 < 7.0` — WordPress 7.0 had shipped during
+the review cycle, the readme that was current at automated-scan time
+was now stale. v0.1.8 bumped to 7.0.
 
 **Rule:** when bumping `readme.txt` `Tested up to:`, also bump
-`devstack/docker-compose.yml` `image:` to the matching tag. Verify the
-image tag exists on Docker Hub first:
+`devstack/docker-compose.yml` `image:` to the matching tag.
+**Additionally:** for any submission that goes through more than one
+review round, **re-check `Tested up to:` against `wp.org`'s current
+stable before every re-upload** — long review cycles routinely
+straddle a new WP release. Hit twice in this project's history;
+treat it as a recurring trap, not a one-time slip. Quick check:
+
+```bash
+# What does wp.org consider the current stable right now?
+curl -sS https://api.wordpress.org/core/version-check/1.7/ \
+  | python3 -c "import json,sys; print(json.load(sys.stdin)['offers'][0]['current'])"
+```
+
+Verify the image tag exists on Docker Hub first:
 
 ```bash
 curl -sS "https://hub.docker.com/v2/repositories/library/wordpress/tags?name=<X.Y>-php8.2&page_size=10" \
@@ -333,6 +364,7 @@ scan passes.**
 
 Known rejections we've hit:
 - `outdated_tested_upto_header: Tested up to: 6.7 < 6.9` (v0.1.4)
+- `outdated_tested_upto_header: Tested up to: 6.9 < 7.0` (v0.1.7 re-upload — same trap, different WP version, see "The WP-image trap" section above)
 
 ### 2. Manual review (1–2 weeks typical, can be longer)
 
@@ -354,10 +386,17 @@ Known round-1 findings (v0.1.5 → v0.1.6):
   at a sibling URL (e.g. `cronheart.com/privacy` vs the wrong
   `cronheart.com/legal/privacy` we shipped in early versions).
 - **Contributors mismatch** — `readme.txt` `Contributors:` line must
-  list at least one WordPress.org account that matches the plugin
-  owner. The slug `cronheart` was claimed by the WP.org account
-  `cronheart`; the publishing identity is `cronmonitor`. Don't list
-  GitHub-handle-only names (`alexanderpo`) — they fail validation.
+  list the **WordPress.org account that owns the plugin slug**, not
+  just any related WP.org account. The slug `cronheart` was claimed
+  by the WP.org account `cronheart` (every upload's confirmation
+  email shows "File updated by **cronheart**, version 0.1.x"). We
+  tried two wrong identities before getting this right:
+  `alexanderpo` (GitHub handle — not a WP.org user, v0.1.5) and
+  `cronmonitor` (a separate WP.org account that exists but does
+  not own the slug, v0.1.7). v0.1.9 finally settled on
+  `Contributors: cronheart`. **The reviewer's static analysis
+  compares your contributors list to the slug owner specifically,
+  not to any WP.org account that uploaded.**
 - **`vendor/*/bin/*` files** — the build script strips these now, but
   if a new bundled dep ships a `bin/` directory, the reviewer will
   flag it. The strip list in `bin/build-release.sh` catches `-name bin`
@@ -598,3 +637,44 @@ so future-you doesn't repeat them.
    `git log -1 --format='%an <%ae> %cn <%ce>'`. Author must be
    `Alexander Palazok <alexander-po@users.noreply.github.com>`;
    committer can be `GitHub <noreply@github.com>` (that's fine).
+
+8. **`Contributors:` in `readme.txt` must list the WP.org slug
+   owner specifically.** Not "the account that uploaded the zip",
+   not "the publishing identity you registered", not your GitHub
+   handle. The reviewer's static analysis compares against
+   ownership of the *slug*, which is fixed at the moment the slug
+   is claimed. This project burned two review rounds learning
+   that: v0.1.5 shipped `alexanderpo` (GitHub handle — not a
+   WP.org user at all), v0.1.7 shipped `cronmonitor` (WP.org
+   account that exists but doesn't own the slug). Only v0.1.9's
+   `cronheart` (the actual slug owner) passed. Lookup: every
+   "File updated by X, version Y" line in WP.org's upload
+   confirmation email is the slug owner — copy that name
+   verbatim.
+
+9. **WordPress ships during long review cycles.** "Tested up to"
+   is not a one-time bump per submission — it's a freshness
+   signal that decays. v0.1.4 was bounced for 6.7 < 6.9; v0.1.7
+   re-uploaded after fixing round-1 manual findings and was
+   bounced *again* for 6.9 < 7.0 because WP 7.0 had shipped in
+   between. Always re-check current WP stable with
+   `curl https://api.wordpress.org/core/version-check/1.7/`
+   before *every* re-upload during a multi-round review, not
+   just the initial submission.
+
+10. **Composer's `--abandoned=fail` (now default in 2.7+) bites
+    transitive deps you can't drop.** PHPUnit 10 brings
+    `sebastian/code-unit` and `sebastian/code-unit-reverse-lookup`,
+    both abandoned upstream without replacements. The fix is
+    `composer audit --abandoned=report` in CI — abandoned
+    packages still log, only real CVEs gate the build. Don't
+    "fix" it back to default unless we drop PHPUnit.
+
+11. **Amending an open PR's commit + force-push works
+    cleanly.** When a small unrelated change (e.g. a CI unblock)
+    needs to land on the same PR mid-review, `git commit --amend`
+    + `git push --force-with-lease` re-runs CI against the new
+    SHA and the squash-merge picks up the latest version
+    automatically. Document the dual scope in the amended commit
+    message — "X and unblock CI" — so future bisect surfaces both
+    intents at the same point in history.
