@@ -19,9 +19,11 @@ PHP package into a WP-Cron monitoring layer:
   or `CRONHEART_EVENT_<HOOK>_UUID` constants in `wp-config.php`;
 * an admin settings page at **Settings → Cronheart**.
 
-The plugin is published on Packagist as `cronheart/wp` and (currently
-in review at the time of writing) submitted to the WordPress.org Plugin
-Directory under the slug `cronheart`. PHP ≥ 8.2, WordPress ≥ 6.0.
+The plugin is published on Packagist as `cronheart/wp` and on the
+WordPress.org Plugin Directory at
+[`wordpress.org/plugins/cronheart/`](https://wordpress.org/plugins/cronheart/)
+(approved after a multi-round review, see the "WP.org submission
+flow" section for what we hit on the way). PHP ≥ 8.2, WordPress ≥ 6.0.
 
 ## The three repos and what flows between them
 
@@ -364,10 +366,125 @@ Known round-1 findings (v0.1.5 → v0.1.6):
 ### 3. Approval → SVN provisioning
 
 After approval the team provisions an SVN repo at
-`https://plugins.svn.wordpress.org/cronheart/`. From that point the
-release flow shifts from "upload zip via form" to "commit to SVN
-trunk + tag". That flow is **not yet implemented** — when we get
-there, document it here.
+`https://plugins.svn.wordpress.org/cronheart/`. From that point on,
+the release flow shifts from "upload zip via the Add-your-Plugin
+form" to "commit to SVN `trunk/` and `tags/X.Y.Z/`". See the next
+section for the SVN flow.
+
+## WordPress.org SVN flow
+
+Once the plugin is approved, all distribution happens through the
+SVN repo. SVN is **not** the version-control system (we keep that in
+git); for WP.org it's a **release-publish channel** — only commit
+ready-to-ship versions there.
+
+The repo layout WP.org expects:
+
+```
+https://plugins.svn.wordpress.org/cronheart/
+├── trunk/         ← latest release contents (matches the highest tagged version)
+├── tags/
+│   └── X.Y.Z/     ← snapshot of each released version (what `Stable tag` in readme.txt points at)
+└── assets/        ← icons, banners, screenshots — NOT shipped inside the plugin zip
+```
+
+**Checkout location.** The local SVN working copy lives at
+`/Users/aliaksandrpazalok/projects/cronheart-svn/` (sibling to this
+git repo). Keep it around between releases — credentials are cached
+in macOS Keychain after the first commit, and a fresh checkout pulls
+~880 KB of history we'd be re-downloading each time.
+
+**Credentials.** SVN username is `cronheart` (the WordPress.org slug
+owner, case-sensitive). The SVN password is a **separate
+application password** generated at
+`profiles.wordpress.org/cronheart/profile/edit/group/3/?screen=svn-password`
+— not the regular WP.org login. macOS caches it via Keychain after
+the first interactive prompt; subsequent commits via the Bash tool
+work without re-typing.
+
+**WP.org SVN allows anonymous read.** `svn list` and `svn checkout`
+work without auth. Auth is only required on `svn commit`. If you
+want to "warm up" the credential cache deliberately, run the first
+commit interactively (in Terminal, not via the Bash tool) so the
+interactive password prompt is visible — pass `--username cronheart`
+explicitly, otherwise SVN tries to authenticate as the OS user.
+
+### Shipping a release to SVN
+
+After git-side tag is pushed and `build/cronheart.zip` is fresh:
+
+```bash
+cd /Users/aliaksandrpazalok/projects/cronheart-svn
+svn up                                          # pick up anyone else's commits (rare for solo maintainer, but cheap)
+
+# 1) Refresh trunk with the new release contents.
+rm -rf trunk/*                                  # clean wipe — we copy the entire built tree
+cp -R /Users/aliaksandrpazalok/projects/cronheart-wp/build/cronheart/. trunk/
+svn add trunk/* --force                         # picks up new files, no-op for existing
+svn rm $(svn status | awk '/^!/ {print $2}' | xargs) 2>/dev/null || true   # remove files that disappeared between versions
+svn commit -m "Release vX.Y.Z"
+
+# 2) Tag the release. `svn cp` copies trunk's current revision into a
+#    new tags/ subdir; the second commit publishes it.
+svn cp trunk tags/X.Y.Z
+svn commit -m "Tagging vX.Y.Z"
+```
+
+WP.org's build pipeline picks up SVN commits within ~10-30 minutes
+and generates the downloadable zip at
+`https://downloads.wordpress.org/plugin/cronheart.X.Y.Z.zip`. The
+`latest-stable.zip` route follows `Stable tag` in `trunk/readme.txt`
+— that field must match the tag directory you created in step 2.
+
+If you need to update `Stable tag` mid-cycle without bumping the
+plugin version (rare — typically you'd ship a new patch), edit
+`trunk/readme.txt` directly and commit. WP.org re-reads it.
+
+### Asset deployment (icons, banners, screenshots)
+
+Assets are **decoupled from the plugin release** — they live in
+`/assets/` at the SVN repo root, not inside `trunk/` or `tags/X.Y.Z/`,
+and you can refresh them any time without bumping the plugin version.
+
+Source SVGs for the icon and banner live in this git repo at
+`.wordpress-org/`:
+
+```
+.wordpress-org/
+├── icon.svg     → renders to icon-128x128.png + icon-256x256.png
+├── banner.svg   → renders to banner-772x250.png + banner-1544x500.png
+└── README.md    → in-tree explanation + design notes
+```
+
+To regenerate the rasters:
+
+```bash
+./bin/generate-wp-assets.sh
+# Outputs to build/wp-org-assets/ (gitignored).
+```
+
+The script uses Docker `librsvg2-bin` (the same SVG renderer Firefox
+ships) + `optipng` for lossless PNG metadata trim. Output is
+bit-deterministic — re-rendering from unchanged SVGs gives identical
+PNG bytes.
+
+To deploy refreshed assets to WP.org:
+
+```bash
+cp build/wp-org-assets/*.png /Users/aliaksandrpazalok/projects/cronheart-svn/assets/
+cd /Users/aliaksandrpazalok/projects/cronheart-svn
+svn add assets/*.png --force
+svn commit -m "Refresh icon / banner"
+```
+
+**Screenshots are not in the asset SVG pipeline.** They are GUI
+captures (Settings → Cronheart admin page, cronheart.com dashboard,
+monitor detail page) and have to be produced manually from the
+devstack + production. The `== Screenshots ==` block in
+`readme.txt` is the source of truth for how many screenshots
+exist and what they depict; the matching PNGs go to
+`cronheart-svn/assets/screenshot-1.png`, `screenshot-2.png`, etc.
+WP.org sequences them by filename, matching the order in readme.
 
 ## End-to-end release checklist
 
@@ -407,9 +524,19 @@ For each new version bump:
     Markdown in browser; **do not** hard-wrap paragraphs to ~70 chars
     like you would in commit messages), attach `build/cronheart.zip`,
     set as latest release.
-13. If a WP.org review is in progress, re-upload the new zip via
-    `https://wordpress.org/plugins/developers/add/` and reply to the
-    reviewer email (brief — see flow #2 above).
+13. Publish to WP.org. The plugin is approved and lives on the SVN
+    repo at `https://plugins.svn.wordpress.org/cronheart/`, so the
+    new version goes there too — see "WordPress.org SVN flow →
+    Shipping a release to SVN" above for the exact `svn cp` / `svn
+    ci` commands. Within ~10-30 minutes WP.org regenerates the
+    downloadable zip at
+    `https://downloads.wordpress.org/plugin/cronheart.X.Y.Z.zip`
+    and `cronheart.latest-stable.zip` redirects there.
+14. (Pre-approval only — kept for the historical record.) During
+    the review cycle, re-uploads went via the
+    `https://wordpress.org/plugins/developers/add/` form and reply
+    to the reviewer email (brief — see flow #2 above). That flow is
+    obsolete now that the plugin is live.
 
 ## What this plugin does NOT do (and why)
 

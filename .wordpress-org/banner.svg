@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1544" height="500" viewBox="0 0 1544 500" role="img" aria-label="Cronheart — dead-man-switch monitoring for WP-Cron">
+    <defs>
+        <radialGradient id="bn-glow-a" cx="0.82" cy="0.18" r="0.55">
+            <stop offset="0%" stop-color="#7c5cff" stop-opacity="0.55"/>
+            <stop offset="60%" stop-color="#7c5cff" stop-opacity="0.05"/>
+            <stop offset="100%" stop-color="#7c5cff" stop-opacity="0"/>
+        </radialGradient>
+        <radialGradient id="bn-glow-b" cx="0.08" cy="0.92" r="0.65">
+            <stop offset="0%" stop-color="#a78bfa" stop-opacity="0.3"/>
+            <stop offset="100%" stop-color="#a78bfa" stop-opacity="0"/>
+        </radialGradient>
+        <pattern id="bn-grid" x="0" y="0" width="48" height="48" patternUnits="userSpaceOnUse">
+            <path d="M48 0 H0 V48" fill="none" stroke="#1f1f27" stroke-width="1"/>
+        </pattern>
+        <linearGradient id="bn-mark-stroke" x1="0" y1="0" x2="120" y2="120" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stop-color="#a78bfa"/>
+            <stop offset="1" stop-color="#7c5cff"/>
+        </linearGradient>
+        <linearGradient id="bn-pulse-fade" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0" stop-color="#a78bfa" stop-opacity="0"/>
+            <stop offset="0.2" stop-color="#a78bfa" stop-opacity="0.55"/>
+            <stop offset="0.85" stop-color="#7c5cff" stop-opacity="0.4"/>
+            <stop offset="1" stop-color="#7c5cff" stop-opacity="0"/>
+        </linearGradient>
+    </defs>
+
+    <rect width="1544" height="500" fill="#0a0a0c"/>
+    <rect width="1544" height="500" fill="url(#bn-grid)" opacity="0.45"/>
+    <rect width="1544" height="500" fill="url(#bn-glow-a)"/>
+    <rect width="1544" height="500" fill="url(#bn-glow-b)"/>
+
+    <!-- Long decorative pulse line spanning right side, fading at both
+         ends. Reinforces the "heartbeat for scheduled jobs" metaphor
+         without competing with the lockup. -->
+    <path d="M 700 250 H 820 L 850 195 L 880 305 L 910 250 H 1440"
+          fill="none"
+          stroke="url(#bn-pulse-fade)"
+          stroke-width="3"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          opacity="0.7"/>
+
+    <g font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
+        <!-- Brand lockup. Anchored center-left within the mobile-safe
+             zone (WP.org crops banner to 772x250 on small screens,
+             keeping the center; we keep all critical content within
+             the central ~772 px). Mark + wordmark sized so it reads
+             at both 1544x500 and 772x250 scales. -->
+        <g transform="translate(180, 175)">
+            <!-- Mark: circle + EKG pulse, matching favicon proportions. -->
+            <circle cx="60" cy="60" r="51" fill="none" stroke="url(#bn-mark-stroke)" stroke-width="5"/>
+            <path d="M19 60 H35 L45 41 L55 79 L65 60 H101"
+                  fill="none"
+                  stroke="url(#bn-mark-stroke)"
+                  stroke-width="6.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"/>
+
+            <!-- Wordmark next to the mark, vertically centered. -->
+            <text x="155" y="78" font-size="76" font-weight="600" letter-spacing="-2" fill="#ededf0">cronheart</text>
+        </g>
+
+        <!-- Tagline. One short line — the canonical readme pitch. -->
+        <text x="180" y="345" font-size="32" font-weight="400" fill="#9a9aa3">
+            Dead-man-switch monitoring for WP-Cron.
+        </text>
+
+        <!-- Footer accent: domain + status pip. Matches OG card style. -->
+        <g transform="translate(180, 410)">
+            <rect width="11" height="11" y="5" rx="2.5" fill="#34d399"/>
+            <text x="22" y="15" font-size="20" font-weight="500" fill="#9a9aa3">cronheart.com</text>
+        </g>
+    </g>
+</svg>
