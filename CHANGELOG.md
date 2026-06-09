@@ -8,6 +8,16 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 _Nothing yet — open a PR and add your entry under the appropriate subsection._
 
+## [0.2.1] — 2026-06-09
+
+Documentation-only release on top of 0.2.0; the plugin code is identical. Cut so the WordPress.org Plugin Directory ships the monitor picker with an accurate readme and an updated screenshot (0.2.0 went to GitHub/Packagist only).
+
+### Changed
+
+- Refreshed `README.md` — corrected the stale "not on WP.org / not on Packagist / v0.1.0" install section, added the monitor picker to "What's in the box", documented the `CRONHEART_API_TOKEN` constant, and re-scoped the "Known limitations" list (picker is heartbeat-only; per-event remains manual).
+- Expanded `readme.txt` "What it does" with the monitor picker, and updated the settings-page screenshot to show the connection section + picker.
+- Bumped plugin header `Version` to `0.2.1` and `readme.txt` `Stable tag` to `0.2.1`.
+
 ## [0.2.0] — 2026-06-09
 
 Adds an optional, account-token-backed **monitor picker** to the Settings → Cronheart page. With a cronheart.com Personal Access Token configured, the heartbeat field becomes a dropdown of the account's monitors instead of a free-text UUID box; the selection still persists to the same `cronheart_heartbeat_uuid` option, so the resolver and the runtime ping path are untouched — only how an operator fills the UUID changes. No token is required: manual UUID entry (and `wp-config.php` constants) work exactly as before.

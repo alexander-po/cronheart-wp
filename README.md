@@ -35,6 +35,13 @@ stop, cronheart alerts you.
   ```
 - **Admin UI** at `Settings → Cronheart` for sites without
   `wp-config.php` access.
+- **Monitor picker** (since v0.2.0) — paste a cronheart.com API token
+  (or define `CRONHEART_API_TOKEN` in `wp-config.php`) and the
+  heartbeat field becomes a dropdown of your account's monitors
+  instead of a hand-typed UUID. Entirely optional and gracefully
+  degrading: no token — or any API error — falls back to the manual
+  UUID field. The token is write-only in the UI and is never carried
+  on the runtime ping path.
 - **Never breaks WP-Cron** — every network / HTTP failure is folded
   into a logged warning. A broken cronheart backend cannot punish
   the host scheduler.
@@ -44,28 +51,29 @@ stop, cronheart alerts you.
 
 ## Install
 
-### Manual (v0.1.0)
+### From WordPress.org (recommended)
 
-1. Download the latest `cronheart.zip` from the
-   [GitHub releases page](https://github.com/alexander-po/cronheart-wp/releases).
-2. WP Admin → **Plugins → Add New → Upload Plugin** → select
-   `cronheart.zip`.
-3. Activate.
-4. Create a monitor on [cronheart.com](https://cronheart.com), copy
-   the UUID, and either:
-   - Add it to `wp-config.php`:
-     ```php
-     define( 'CRONHEART_HEARTBEAT_UUID', 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx' );
-     ```
-   - Or paste it under **Settings → Cronheart** in wp-admin.
+WP Admin → **Plugins → Add New** → search **"Cronheart"** →
+**Install Now → Activate**. Or download `cronheart.zip` from the
+[WordPress.org plugin page](https://wordpress.org/plugins/cronheart/)
+or a [GitHub release](https://github.com/alexander-po/cronheart-wp/releases)
+and upload it under **Plugins → Add New → Upload Plugin**.
 
-WP.org plugin-directory submission is deferred to v0.1.1+ — we are
-iterating the API on early GitHub adopters first.
+Then create a monitor on [cronheart.com](https://cronheart.com), copy
+the UUID, and either:
+
+- Add it to `wp-config.php`:
+  ```php
+  define( 'CRONHEART_HEARTBEAT_UUID', 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx' );
+  ```
+- Or set it under **Settings → Cronheart** — paste the UUID, or, with
+  an API token configured, pick the monitor from the dropdown.
 
 ### Composer (developers)
 
-Not yet published on Packagist for v0.1.0; track this repo and ship
-a release once the API stabilises.
+```bash
+composer require cronheart/wp
+```
 
 ### Requirements
 
@@ -110,6 +118,12 @@ define( 'CRONHEART_ENDPOINT', 'https://staging.cronheart.example.com' );
 // do not terminate TLS. NEVER set this with a public http:// endpoint —
 // the monitor UUID leaks over the network in clear text.
 define( 'CRONHEART_ALLOW_INSECURE_ENDPOINT', true );
+
+// Optional: cronheart.com account API token (cmk_…) to enable the
+// monitor picker on the settings page. Account-level and write-capable,
+// so prefer this constant over storing it in the database. Requires a
+// Starter plan or higher; without it you simply pick monitors by UUID.
+define( 'CRONHEART_API_TOKEN', getenv( 'CRONHEART_API_TOKEN' ) ?: '' );
 ```
 
 ### Per-event helper
@@ -151,15 +165,17 @@ add_action( 'plugins_loaded', function () {
   **Do not depend on the `CronMonitor\…` namespace from outside
   this plugin** (e.g. another plugin reading our autoload) — that
   surface may move in a future minor release without warning.
-- **No WP-CLI commands** in v0.1.0 (planned for v0.2).
-- **No multisite / network-activation handling** in v0.1.0 (planned
-  for v0.2). The plugin works on a single-site install.
+- **No WP-CLI commands** yet — `wp cronheart status` / `sync` are on
+  the roadmap, not in 0.2.x.
+- **No multisite / network-activation handling** yet. The plugin works
+  on a single-site install.
 - **No Action Scheduler instrumentation** — only WP-Cron hooks are
   monitored. WooCommerce stacks using Action Scheduler for tasks
   will not see those events on the cronheart dashboard yet.
-- **No admin UI for per-event UUID editing** — register through PHP
-  (`cronheart_monitor()`) or constants in v0.1.0. The "Monitored
-  events" table in Settings → Cronheart is read-only.
+- **The monitor picker covers the site heartbeat only.** Per-event
+  monitors are still registered through PHP (`cronheart_monitor()`) or
+  `CRONHEART_EVENT_<HOOK>_UUID` constants; the "Monitored events" table
+  in Settings → Cronheart is read-only.
 
 ## Companion projects
 
