@@ -17,7 +17,11 @@ PHP package into a WP-Cron monitoring layer:
   `wp_schedule_event` hook the operator registers via the
   `cronheart_monitor()` helper, the `cronheart_monitor_map` filter,
   or `CRONHEART_EVENT_<HOOK>_UUID` constants in `wp-config.php`;
-* an admin settings page at **Settings → Cronheart**.
+* an admin settings page at **Settings → Cronheart** with, since
+  v0.2.0, an optional monitor *picker*: when an account API token is
+  configured (the `CRONHEART_API_TOKEN` constant or the write-only
+  admin field), the heartbeat UUID becomes a dropdown of the account's
+  monitors fetched via the SDK's authenticated `MonitorApiClient`.
 
 The plugin is published on Packagist as `cronheart/wp` and on the
 WordPress.org Plugin Directory at
@@ -37,6 +41,13 @@ bundles the SDK in vendor/     ⇐ this is what we bundle      ← both ping thi
 
 The plugin re-exports a handful of SDK primitives (`CronMonitorClient::create()`,
 `Configuration`, `PingResult`) through its own thin `Api\Client` facade.
+The runtime ping path uses the SDK's no-throw `CronMonitorClient`; the
+admin monitor picker additionally uses the SDK's **throwing**
+`CronMonitor\Api\MonitorApiClient`, built lazily — only on the settings-page
+render, only when a token is present — with a separate tokenless runtime
+config kept for the ping path (least privilege). The account token is
+write-capable, so the admin field is write-only and never echoes the stored
+value, and every listing failure degrades to the manual UUID field.
 We **do not** prefix the bundled SDK's namespace (Strauss / php-scoper is
 deferred pending a first reported collision — `cron-monitor/php-sdk` is
 not currently bundled by any other WP plugin, so the canonical
@@ -82,9 +93,11 @@ Same as the sibling SDK repo — same rules, same reasoning:
   --force-with-lease`.
 - **Don't add `Co-Authored-By: Claude` trailers** to commit messages.
   Don't add any AI-attribution trailers at all.
-- **Don't leak `@capital.com` email** anywhere — repo content, commit
-  authorship, tag identity, GitHub UI. This is a hard rule (we did
-  a `git filter-branch` purge in a prior session; do not regress).
+- **Don't leak the maintainer's private email** anywhere — repo
+  content, commit authorship, tag identity, GitHub UI. Public commits
+  use the GitHub noreply identity (see "Per-repo git config" below).
+  This is a hard rule (a prior `git filter-branch` purge enforced it;
+  do not regress).
 
 ## Per-repo git config (NOT global)
 
@@ -96,8 +109,8 @@ git config user.name  "Alexander Palazok"
 git config user.email "alexander-po@users.noreply.github.com"
 ```
 
-Global git config keeps the work email — we deliberately do not touch
-it. Always verify after a clean clone:
+The global git config is deliberately left untouched. Always verify
+after a clean clone:
 
 ```bash
 git config user.email   # must be alexander-po@users.noreply.github.com
@@ -161,26 +174,6 @@ default — it will fail every build the moment a new dep gets
 abandoned, with nothing for us to actually act on. If a real CVE
 shows up, `composer audit` still exits non-zero, that's what we
 care about.
-
-## Behind a corporate proxy (Netskope)
-
-`composer install` and `wp plugin install` inside Docker hit SSL
-verification errors when the host has Netskope intercepting traffic.
-Mount the system cert bundle into the container:
-
-```bash
-# Generate once (refresh if you get cert errors again):
-security export -k /Library/Keychains/System.keychain -t certs -f pemseq -o /tmp/sys_certs.pem
-
-# Then mount it into any composer / wp-cli docker run:
-docker run --rm -v "$PWD":/app \
-    -v /tmp/sys_certs.pem:/usr/local/share/ca-certificates/sys_certs.crt \
-    -w /app composer:2 sh -c "update-ca-certificates >/dev/null 2>&1 || true; composer install ..."
-```
-
-`wp plugin install` from `wp.org` will still fail for cert reasons —
-download the zip on the host with `curl` first, then `docker cp` it
-into the wp-cli container and install from the local path.
 
 ## Devstack — two modes
 

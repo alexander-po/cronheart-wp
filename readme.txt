@@ -4,7 +4,7 @@ Tags: cron, wp-cron, monitoring, healthcheck, deadman-switch
 Requires at least: 6.0
 Tested up to: 7.0
 Requires PHP: 8.2
-Stable tag: 0.2.0
+Stable tag: 0.2.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -37,6 +37,11 @@ alerts you via email, Telegram, Slack, Discord, or a custom webhook.
 * **Settings page.** A read-only "Monitored events" table at
   Settings → Cronheart shows every hook the plugin is watching and
   where its UUID came from (constant, option, filter).
+* **Monitor picker.** Save a cronheart.com API token and the site
+  heartbeat field becomes a dropdown of your account's monitors
+  instead of a hand-typed UUID. Entirely optional — without a token
+  you paste the UUID as before, and any API hiccup falls back to that
+  field. The token is write-only and never leaves wp-admin.
 * **Configuration through `wp-config.php` constants** for production
   (`CRONHEART_HEARTBEAT_UUID`, `CRONHEART_EVENT_<HOOK>_UUID`), with
   admin-UI fallback for sites where editing `wp-config.php` is not
@@ -202,15 +207,21 @@ Open an issue on
 
 == Screenshots ==
 
-1. The plugin's settings page at **Settings → Cronheart**:
-   site-heartbeat UUID field plus the read-only monitored-events
-   table.
+1. The plugin's settings page at **Settings → Cronheart**: the
+   cronheart.com connection section, the site-heartbeat monitor
+   picker, and the read-only monitored-events table.
 2. The cronheart.com dashboard listing the configured monitors
    and their last-ping timestamps.
 3. A monitor detail view on cronheart.com after the plugin has
    reported a heartbeat + a successful per-event run.
 
 == Changelog ==
+
+= 0.2.1 =
+* Documentation and screenshots for the monitor picker. No functional
+  change from 0.2.0 — the plugin code is identical; this release
+  refreshes the readme ("What it does", external-services disclosure,
+  FAQ) and adds an updated settings-page screenshot showing the picker.
 
 = 0.2.0 =
 * **Monitor picker.** Save a cronheart.com API token under Settings
@@ -355,6 +366,10 @@ Open an issue on
 * PHP fatal-error capture for the fail-ping body.
 
 == Upgrade Notice ==
+
+= 0.2.1 =
+Documentation + screenshot refresh for the 0.2.0 monitor picker. No
+code change. Safe to upgrade.
 
 = 0.2.0 =
 Adds an optional monitor picker: save a cronheart.com API token and
