@@ -207,7 +207,7 @@ Open an issue on
 
 == Screenshots ==
 
-1. Settings → Cronheart: the cronheart.com connection section, the site-heartbeat monitor picker, and the read-only monitored-events table.
+1. The Cronheart settings page in WP admin: the cronheart.com connection section, the site-heartbeat monitor picker, and the read-only monitored-events table.
 2. The cronheart.com dashboard listing the configured monitors and their last-ping timestamps.
 3. A monitor detail view on cronheart.com after the plugin has reported a heartbeat and a successful per-event run.
 
