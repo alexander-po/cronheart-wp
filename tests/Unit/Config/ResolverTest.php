@@ -260,6 +260,57 @@ final class ResolverTest extends TestCase
         )->allowInsecureEndpoint());
     }
 
+    public function test_api_token_constant_wins_over_option(): void
+    {
+        $resolver = $this->buildResolver(
+            constants: [Resolver::API_TOKEN_CONSTANT => 'cmk_from_constant'],
+            options: [Resolver::API_TOKEN_OPTION => 'cmk_from_option'],
+        );
+
+        self::assertSame('cmk_from_constant', $resolver->apiToken());
+        self::assertTrue($resolver->apiTokenIsConstant());
+    }
+
+    public function test_api_token_falls_back_to_option_when_constant_undefined(): void
+    {
+        $resolver = $this->buildResolver(
+            constants: [],
+            options: [Resolver::API_TOKEN_OPTION => 'cmk_from_option'],
+        );
+
+        self::assertSame('cmk_from_option', $resolver->apiToken());
+        self::assertFalse($resolver->apiTokenIsConstant());
+    }
+
+    public function test_api_token_returns_null_when_no_source_supplies_a_value(): void
+    {
+        self::assertNull($this->buildResolver(constants: [], options: [])->apiToken());
+    }
+
+    public function test_api_token_empty_constant_is_treated_as_suppression(): void
+    {
+        // A blanked constant disables the API features and shadows the
+        // option — same empty-string-as-suppression policy as the UUIDs.
+        // `apiTokenIsConstant()` still reports true so the settings page
+        // shows the "set via wp-config" notice rather than an editable
+        // field.
+        $resolver = $this->buildResolver(
+            constants: [Resolver::API_TOKEN_CONSTANT => ''],
+            options: [Resolver::API_TOKEN_OPTION => 'cmk_from_option'],
+        );
+
+        self::assertNull($resolver->apiToken());
+        self::assertTrue($resolver->apiTokenIsConstant());
+    }
+
+    public function test_api_token_empty_option_does_not_fall_through(): void
+    {
+        self::assertNull($this->buildResolver(
+            constants: [],
+            options: [Resolver::API_TOKEN_OPTION => ''],
+        )->apiToken());
+    }
+
     /**
      * @param array<string, mixed>  $constants accepts native PHP types — strings for UUID / endpoint, booleans for allow-insecure — matching what `constant()` would return in production
      * @param array<string, mixed>  $options

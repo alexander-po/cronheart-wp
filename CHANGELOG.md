@@ -8,6 +8,24 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 _Nothing yet — open a PR and add your entry under the appropriate subsection._
 
+## [0.2.0] — 2026-06-09
+
+Adds an optional, account-token-backed **monitor picker** to the Settings → Cronheart page. With a cronheart.com Personal Access Token configured, the heartbeat field becomes a dropdown of the account's monitors instead of a free-text UUID box; the selection still persists to the same `cronheart_heartbeat_uuid` option, so the resolver and the runtime ping path are untouched — only how an operator fills the UUID changes. No token is required: manual UUID entry (and `wp-config.php` constants) work exactly as before.
+
+The account token is a write-capable credential, so it is treated with care: a write-only settings field that never echoes the stored value, a preferred `CRONHEART_API_TOKEN` `wp-config.php` constant, and a separate token-bearing SDK `Configuration` built only for the admin listing call — the high-frequency runtime ping path keeps its tokenless, least-privilege config. The listing call is made only on the settings-page render and only when a token is present, never on the front end or during WP-Cron, which keeps the "External services" disclosure accurate.
+
+### Added
+
+- **Heartbeat monitor picker.** When an API token is configured and the listing succeeds, `SettingsPage::render_heartbeat_field()` renders a `<select>` of the account's monitors (label `name — uuid`, blank "do not monitor" option). A previously saved UUID that is not in the account list stays selectable so a form save never silently wipes it.
+- **Write-only API-token field.** New "cronheart.com connection" settings section above the heartbeat section, with a `cmk_…` token field that never renders the stored value, a "remove token" checkbox, and a wp-config-constant notice.
+- **`CRONHEART_API_TOKEN` constant / `cronheart_api_token` option**, resolved by `Config\Resolver::apiToken()` (constant over option, empty = suppression, deliberately no filter layer for a full-account credential).
+- **Live connection status** under the token field: a success notice with the monitor count, or a warning notice that maps each failure — `402` (with an upgrade link), `401`, `429`, and any transport/other error — to a clear message, always falling back to the manual UUID field. The admin page never fatals on a listing failure.
+
+### Changed
+
+- Bumped the bundled `cron-monitor/php-sdk` constraint from `^0.2.1` to `^1.0` (the new SDK ships the authenticated `CronMonitor\Api\MonitorApiClient` the picker consumes).
+- Bumped plugin header `Version` from `0.1.9` to `0.2.0`; bumped `readme.txt` `Stable tag` to `0.2.0`; expanded the `readme.txt` "External services" disclosure to cover the wp-admin-only management-API call.
+
 ## [0.1.9] — 2026-05-25
 
 WordPress.org Plugin Directory review **round 2** response. The reviewer manually checked v0.1.8 and flagged a single remaining issue (round 1's legal URLs and `vendor/bin/*` findings are confirmed resolved); this release clears the last one. No code changes — pings, hooks, admin UI all identical to 0.1.8. Safe to upgrade.

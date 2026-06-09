@@ -11,6 +11,7 @@ use Cronheart\WP\Config\Resolver;
 use Cronheart\WP\Hooks\HeartbeatHandler;
 use Cronheart\WP\Hooks\HeartbeatScheduler;
 use Cronheart\WP\Hooks\PerEventInstrumentation;
+use CronMonitor\Api\MonitorApiClient;
 use CronMonitor\Client\Configuration;
 
 // Direct-access guard. WP.org's Plugin Check flags every PHP file
@@ -44,6 +45,17 @@ use CronMonitor\Client\Configuration;
  */
 final class Plugin
 {
+    /**
+     * Upper bound on monitors materialised for the admin heartbeat
+     * picker. The dropdown lists at most this many; an account with more
+     * monitors than the cap will not see every one of them in the list.
+     * A heartbeat UUID already saved — whether or not it appears in the
+     * listed subset — stays selectable, so the cap never silently drops a
+     * saved selection. The picker is an ergonomic shortcut, not an
+     * exhaustive browser.
+     */
+    private const MONITOR_PICKER_LIMIT = 200;
+
     public function boot(): void
     {
         $resolver = self::buildResolver();
@@ -74,7 +86,45 @@ final class Plugin
         // settings hooks outside an admin request is harmless — the
         // hooks only fire on admin page loads — so we skip the
         // `is_admin()` guard.
-        (new SettingsPage(new EventList($resolver)))->register();
+        (new SettingsPage(new EventList($resolver), $resolver, self::buildMonitorLister($resolver)))->register();
+    }
+
+    /**
+     * Build the closure the settings page calls to list the operator's
+     * monitors for the heartbeat picker. It is invoked lazily, only on the
+     * Settings → Cronheart page render and only when an API token is
+     * configured — never on the front end, in WP-Cron, or during the
+     * runtime ping path. That single call site is what keeps the plugin's
+     * "External services" disclosure accurate: the account token leaves
+     * the site only from wp-admin.
+     *
+     * The closure deliberately does NOT catch exceptions — the settings
+     * page owns the graceful-degradation ladder (auth / plan / rate-limit /
+     * transport) so it can map each failure to the right admin notice and
+     * fall back to the manual UUID field. It throws if the endpoint is
+     * misconfigured, which the page treats as a generic "could not reach"
+     * fallback.
+     *
+     * @return \Closure(string): list<\CronMonitor\Api\Dto\Monitor>
+     */
+    private static function buildMonitorLister(Resolver $resolver): \Closure
+    {
+        return static function (string $token) use ($resolver): array {
+            $configuration = self::buildApiConfiguration($resolver, $token);
+            if (null === $configuration) {
+                throw new \RuntimeException('The Cronheart API endpoint is misconfigured.');
+            }
+
+            $monitors = [];
+            foreach (MonitorApiClient::create($configuration)->allMonitors() as $monitor) {
+                $monitors[] = $monitor;
+                if (\count($monitors) >= self::MONITOR_PICKER_LIMIT) {
+                    break;
+                }
+            }
+
+            return $monitors;
+        };
     }
 
     /**
@@ -125,6 +175,30 @@ final class Plugin
             return new Configuration(
                 endpoint: $endpoint ?? Configuration::DEFAULT_ENDPOINT,
                 allowInsecureEndpoint: $allowInsecure,
+            );
+        } catch (\InvalidArgumentException) {
+            return null;
+        }
+    }
+
+    /**
+     * Build the SDK `Configuration` for the authenticated management API,
+     * carrying the account token as `apiKey`. Distinct from
+     * `buildSdkConfiguration()` (which stays tokenless): the high-frequency
+     * runtime ping path must never carry a write-capable credential —
+     * least privilege. This config is built only for the admin
+     * monitor-picker, lazily, inside the lister closure.
+     *
+     * Same endpoint / allow-insecure resolution and the same defensive
+     * fall-back-to-null on a misconfigured endpoint as the runtime config.
+     */
+    private static function buildApiConfiguration(Resolver $resolver, string $token): ?Configuration
+    {
+        try {
+            return new Configuration(
+                endpoint: $resolver->endpoint() ?? Configuration::DEFAULT_ENDPOINT,
+                apiKey: $token,
+                allowInsecureEndpoint: $resolver->allowInsecureEndpoint(),
             );
         } catch (\InvalidArgumentException) {
             return null;
