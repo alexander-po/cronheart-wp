@@ -20,7 +20,7 @@
     },
     "require": {
         "php": ">=8.2",
-        "cron-monitor/php-sdk": "^0.2.1"
+        "cron-monitor/php-sdk": "^1.0"
     },
     "require-dev": {
         "phpunit/phpunit": "^10.5.20",

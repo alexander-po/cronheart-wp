@@ -54,6 +54,8 @@ final class Resolver
     public const ENDPOINT_OPTION = 'cronheart_endpoint';
     public const ALLOW_INSECURE_CONSTANT = 'CRONHEART_ALLOW_INSECURE_ENDPOINT';
     public const ALLOW_INSECURE_OPTION = 'cronheart_allow_insecure_endpoint';
+    public const API_TOKEN_CONSTANT = 'CRONHEART_API_TOKEN';
+    public const API_TOKEN_OPTION = 'cronheart_api_token';
 
     /**
      * @param \Closure(string): mixed                        $constantReader returns the
@@ -230,6 +232,50 @@ final class Resolver
         $fromOption = ($this->optionReader)(self::ALLOW_INSECURE_OPTION);
 
         return (bool) $fromOption;
+    }
+
+    /**
+     * The account-level cronheart.com API token (a `cmk_…` Personal
+     * Access Token) used by the admin monitor-picker to list the
+     * operator's monitors. Resolution mirrors the UUID story —
+     * `wp-config.php` constant first (the secure path: keeps a
+     * write-capable secret out of the database), then the
+     * `wp_options` value the admin UI writes. There is deliberately
+     * **no filter layer**: a full-account credential must not be
+     * injectable by an arbitrary `add_filter()` callback.
+     *
+     * Empty strings collapse to null (same suppression policy as the
+     * UUID resolvers), so a blanked field disables the API features
+     * and the plugin falls back to manual UUID entry.
+     *
+     * Note: this token is never needed by the runtime ping path — the
+     * heartbeat / per-event pings authenticate by anonymous per-monitor
+     * UUID. It is consumed only in wp-admin.
+     */
+    public function apiToken(): ?string
+    {
+        $fromConstant = ($this->constantReader)(self::API_TOKEN_CONSTANT);
+        if (\is_string($fromConstant)) {
+            return '' === $fromConstant ? null : $fromConstant;
+        }
+
+        $fromOption = ($this->optionReader)(self::API_TOKEN_OPTION);
+        if (\is_string($fromOption)) {
+            return '' === $fromOption ? null : $fromOption;
+        }
+
+        return null;
+    }
+
+    /**
+     * Whether the API token comes from a `wp-config.php` constant rather
+     * than the database option. The settings page reads this to render a
+     * read-only "set via wp-config" notice and disable the field, the
+     * same way `render_heartbeat_intro()` does for the heartbeat UUID.
+     */
+    public function apiTokenIsConstant(): bool
+    {
+        return \is_string(($this->constantReader)(self::API_TOKEN_CONSTANT));
     }
 
     /**

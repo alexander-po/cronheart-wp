@@ -4,7 +4,7 @@ Tags: cron, wp-cron, monitoring, healthcheck, deadman-switch
 Requires at least: 6.0
 Tested up to: 7.0
 Requires PHP: 8.2
-Stable tag: 0.1.9
+Stable tag: 0.2.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -54,10 +54,12 @@ just stop seeing pings on the dashboard.
 = External services =
 
 This plugin sends HTTP requests to [cronheart.com](https://cronheart.com)
-on every scheduled WP-Cron run, but **only when you supply a
-monitor UUID**. Without configuration the plugin loads and does
-nothing — no telemetry, no usage statistics, no anonymous reports.
+in two distinct situations. Both are opt-in: without configuration
+the plugin loads and does nothing — no telemetry, no usage
+statistics, no anonymous reports.
 
+**1. Monitoring pings (front end / WP-Cron).** Sent on every
+scheduled WP-Cron run, but **only when you supply a monitor UUID**.
 The exact data sent per ping:
 
 * The per-monitor UUID you configured (path segment).
@@ -65,6 +67,16 @@ The exact data sent per ping:
   exception summary (for `fail` pings) or nothing (for `start` /
   `success` / `heartbeat`).
 * The plugin / SDK version in a `User-Agent` header.
+
+**2. Monitor listing (wp-admin only).** When — and only when — you
+save a cronheart.com API token, the **Settings → Cronheart** page
+calls `https://cronheart.com/api/v1/monitors` to fetch your monitor
+list for the heartbeat picker. The request carries the token as an
+`Authorization: Bearer` header and runs **only while a logged-in
+administrator is viewing that settings page** — never on the front
+end, during WP-Cron, or in any other context. No token, no request.
+The token is optional; without it you simply paste a monitor UUID by
+hand and this call is never made.
 
 [Cronheart.com Terms of Service](https://cronheart.com/terms) ·
 [Privacy policy](https://cronheart.com/privacy)
@@ -94,6 +106,13 @@ maintained independently.
      the WP admin.
 4. Done. Within five minutes you should see the first `heartbeat`
    ping on the cronheart dashboard.
+5. *(Optional)* To choose a monitor from a dropdown instead of
+   pasting its UUID, create a Personal Access Token at cronheart.com
+   (**Settings → API Tokens**) and save it under **Settings →
+   Cronheart**. API access requires a Starter plan or higher; the
+   plugin works fully on the free tier without a token. For
+   production, prefer `define( 'CRONHEART_API_TOKEN', 'cmk_…' );` in
+   `wp-config.php` to keep the account credential out of the database.
 
 For per-event monitoring (a specific scheduled hook, not just the
 site heartbeat), register the hook from a plugin / theme /
@@ -129,6 +148,19 @@ No. Cronheart's free tier covers 20 monitors per account — enough
 for a typical site's heartbeat plus several per-event monitors.
 Paid tiers (Starter / Growth / Scale) raise the cap and unlock
 additional notification channels.
+
+= Do I need an API token? =
+
+No — it is entirely optional. Paste a monitor UUID under Settings →
+Cronheart (or define it in `wp-config.php`) and the plugin works on
+any plan, including the free tier. A token only adds convenience:
+the settings page can then list your monitors and let you pick one
+from a dropdown instead of copying a UUID by hand. The token is an
+account-level credential, so for production prefer defining
+`CRONHEART_API_TOKEN` in `wp-config.php` over storing it in the
+database. The picker (API access) requires a Starter plan or higher;
+if your plan does not include it the page shows a notice and falls
+back to manual UUID entry.
 
 = Where do I find my monitor UUID? =
 
@@ -179,6 +211,28 @@ Open an issue on
    reported a heartbeat + a successful per-event run.
 
 == Changelog ==
+
+= 0.2.0 =
+* **Monitor picker.** Save a cronheart.com API token under Settings
+  → Cronheart and the heartbeat field becomes a dropdown of your
+  monitors instead of a free-text UUID box. The selection still
+  saves to the same `cronheart_heartbeat_uuid` option, so nothing
+  changes about how pings are sent — only how you fill in the UUID.
+* **Write-only API token field.** The token is never echoed back
+  into the page; it can be set in the database or, preferred for
+  production, via a new `CRONHEART_API_TOKEN` constant in
+  `wp-config.php`.
+* **wp-admin-only API call.** Listing your monitors happens only on
+  the settings page, only when a token is configured, and never on
+  the front end or during WP-Cron. The runtime ping path is
+  unchanged and carries no account credential. See the updated
+  "External services" disclosure.
+* **Graceful fallback.** If the listing fails — no API access on
+  your plan, an invalid token, a rate limit, or a network error —
+  the page shows a notice and falls back to manual UUID entry. The
+  admin page never fatals.
+* Upgraded the bundled `cron-monitor/php-sdk` to `^1.0`, which adds
+  the authenticated management-API client the picker uses.
 
 = 0.1.9 =
 * Plugin Directory review round 2 fix. `Contributors:` changed
@@ -301,6 +355,12 @@ Open an issue on
 * PHP fatal-error capture for the fail-ping body.
 
 == Upgrade Notice ==
+
+= 0.2.0 =
+Adds an optional monitor picker: save a cronheart.com API token and
+choose your heartbeat monitor from a dropdown instead of pasting a
+UUID. No token required — manual UUID entry works exactly as before.
+The runtime ping path is unchanged. Safe to upgrade.
 
 = 0.1.9 =
 Plugin Directory review round 2 metadata fix (Contributors set

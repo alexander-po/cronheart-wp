@@ -167,4 +167,24 @@ namespace {
     {
         return $text;
     }
+
+    function esc_url(string $url, ?array $protocols = null, string $_context = 'display'): string
+    {
+        return $url;
+    }
+
+    function _n(string $single, string $plural, int $number, string $domain = 'default'): string
+    {
+        return 1 === $number ? $single : $plural;
+    }
+
+    function selected(mixed $selected, mixed $current = true, bool $display = true): string
+    {
+        $result = (string) $selected === (string) $current ? " selected='selected'" : '';
+        if ($display) {
+            echo $result;
+        }
+
+        return $result;
+    }
 }

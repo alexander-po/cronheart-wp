@@ -10,6 +10,13 @@ use Brain\Monkey\Functions;
 use Cronheart\WP\Admin\EventList;
 use Cronheart\WP\Admin\SettingsPage;
 use Cronheart\WP\Config\Resolver;
+use CronMonitor\Api\Dto\Monitor;
+use CronMonitor\Api\Dto\MonitorStatus;
+use CronMonitor\Api\Dto\ScheduleKind;
+use CronMonitor\Api\Exception\ApiTransportException;
+use CronMonitor\Api\Exception\AuthenticationException;
+use CronMonitor\Api\Exception\PlanRestrictionException;
+use CronMonitor\Api\Exception\RateLimitException;
 use PHPUnit\Framework\TestCase;
 
 final class SettingsPageTest extends TestCase
@@ -105,9 +112,11 @@ final class SettingsPageTest extends TestCase
         $this->addToAssertionCount(1);
     }
 
-    public function test_register_settings_wires_setting_section_and_field(): void
+    public function test_register_settings_wires_both_sections_and_fields(): void
     {
         Functions\when('__')->returnArg();
+
+        // Heartbeat setting/section/field (unchanged) ...
         Functions\expect('register_setting')
             ->once()
             ->with(
@@ -135,9 +144,402 @@ final class SettingsPageTest extends TestCase
                 SettingsPage::HEARTBEAT_SECTION,
             );
 
+        // ... plus the new API connection setting/section/field.
+        Functions\expect('register_setting')
+            ->once()
+            ->with(
+                SettingsPage::OPTION_GROUP,
+                Resolver::API_TOKEN_OPTION,
+                self::callback(static fn (array $args): bool => 'string' === $args['type']
+                    && \is_array($args['sanitize_callback'])
+                    && '' === $args['default']),
+            );
+        Functions\expect('add_settings_section')
+            ->once()
+            ->with(
+                SettingsPage::API_SECTION,
+                'cronheart.com connection',
+                self::isType('array'),
+                SettingsPage::MENU_SLUG,
+            );
+        Functions\expect('add_settings_field')
+            ->once()
+            ->with(
+                Resolver::API_TOKEN_OPTION,
+                'API token',
+                self::isType('array'),
+                SettingsPage::MENU_SLUG,
+                SettingsPage::API_SECTION,
+            );
+
         $this->buildPage()->register_settings();
 
-        $this->addToAssertionCount(3);
+        $this->addToAssertionCount(6);
+    }
+
+    public function test_sanitize_api_token_accepts_a_cmk_token(): void
+    {
+        Functions\when('get_option')->justReturn('');
+        unset($_POST[SettingsPage::API_TOKEN_CLEAR_FIELD]);
+
+        $token = 'cmk_'.str_repeat('a', 43);
+        self::assertSame($token, SettingsPage::sanitize_api_token($token));
+    }
+
+    public function test_sanitize_api_token_empty_submit_keeps_existing(): void
+    {
+        Functions\when('get_option')->justReturn('cmk_existing_token_value');
+        unset($_POST[SettingsPage::API_TOKEN_CLEAR_FIELD]);
+        Functions\expect('add_settings_error')->never();
+
+        self::assertSame('cmk_existing_token_value', SettingsPage::sanitize_api_token(''));
+        self::assertSame('cmk_existing_token_value', SettingsPage::sanitize_api_token('   '));
+    }
+
+    public function test_sanitize_api_token_rejects_non_cmk_without_wiping_existing(): void
+    {
+        Functions\when('get_option')->justReturn('cmk_existing_token_value');
+        Functions\when('esc_html__')->returnArg();
+        unset($_POST[SettingsPage::API_TOKEN_CLEAR_FIELD]);
+        Functions\expect('add_settings_error')
+            ->once()
+            ->with(
+                Resolver::API_TOKEN_OPTION,
+                'cronheart_invalid_api_token',
+                self::stringContains('cmk_'),
+            );
+
+        // A bad replacement attempt must NOT destroy the good stored token.
+        self::assertSame('cmk_existing_token_value', SettingsPage::sanitize_api_token('not-a-token'));
+    }
+
+    public function test_sanitize_api_token_clear_checkbox_wipes_the_token(): void
+    {
+        Functions\when('get_option')->justReturn('cmk_existing_token_value');
+        $_POST[SettingsPage::API_TOKEN_CLEAR_FIELD] = '1';
+
+        try {
+            self::assertSame('', SettingsPage::sanitize_api_token(''));
+        } finally {
+            unset($_POST[SettingsPage::API_TOKEN_CLEAR_FIELD]);
+        }
+    }
+
+    public function test_render_api_token_field_never_echoes_the_stored_token(): void
+    {
+        Functions\when('__')->returnArg();
+        Functions\when('esc_html__')->returnArg();
+        Functions\when('esc_attr')->returnArg();
+        Functions\when('get_option')->justReturn('cmk_super_secret_value_1234567890');
+
+        ob_start();
+        $this->buildPage()->render_api_token_field();
+        $html = (string) ob_get_clean();
+
+        self::assertStringNotContainsString('cmk_super_secret_value_1234567890', $html, 'the stored token must never be rendered');
+        self::assertStringContainsString('type="password"', $html);
+        self::assertStringContainsString('value=""', $html);
+        self::assertStringContainsString(SettingsPage::API_TOKEN_CLEAR_FIELD, $html, 'a stored token offers a remove checkbox');
+    }
+
+    public function test_render_api_intro_shows_wp_config_notice_when_constant_set(): void
+    {
+        Functions\when('__')->returnArg();
+        Functions\when('esc_html__')->returnArg();
+        Functions\when('esc_html')->returnArg();
+
+        $resolver = $this->resolverWithConstants([Resolver::API_TOKEN_CONSTANT => 'cmk_from_wp_config']);
+
+        ob_start();
+        $this->buildPage($resolver)->render_api_intro();
+        $html = (string) ob_get_clean();
+
+        self::assertStringContainsString(Resolver::API_TOKEN_CONSTANT, $html);
+        self::assertStringContainsString('wp-config.php', $html);
+        self::assertStringNotContainsString('cmk_from_wp_config', $html, 'the constant value must not be echoed');
+    }
+
+    public function test_render_heartbeat_field_renders_monitor_dropdown_when_listing_succeeds(): void
+    {
+        Functions\when('__')->returnArg();
+        Functions\when('esc_html__')->returnArg();
+        Functions\when('esc_attr')->returnArg();
+        Functions\when('esc_html')->returnArg();
+        Functions\when('get_option')->justReturn('');
+        Functions\when('selected')->alias(
+            static fn ($a, $b = true, $echo = true): string => (string) $a === (string) $b ? " selected='selected'" : ''
+        );
+
+        $monitors = [
+            $this->makeMonitor('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'Nightly reports'),
+            $this->makeMonitor('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'Hourly sync'),
+        ];
+
+        $page = $this->buildPage(
+            $this->resolverWithApiToken('cmk_'.str_repeat('a', 43)),
+            static fn (string $token): array => $monitors,
+        );
+
+        ob_start();
+        $page->render_heartbeat_field();
+        $html = (string) ob_get_clean();
+
+        self::assertStringContainsString('<select', $html);
+        self::assertStringContainsString('— Do not monitor —', $html);
+        self::assertStringContainsString('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', $html);
+        self::assertStringContainsString('Nightly reports', $html);
+        self::assertStringContainsString('Hourly sync', $html);
+        self::assertStringNotContainsString('<input type="text"', $html);
+    }
+
+    public function test_render_heartbeat_field_preselects_the_saved_monitor(): void
+    {
+        Functions\when('__')->returnArg();
+        Functions\when('esc_html__')->returnArg();
+        Functions\when('esc_attr')->returnArg();
+        Functions\when('esc_html')->returnArg();
+        Functions\when('get_option')->justReturn('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb');
+        Functions\when('selected')->alias(
+            static fn ($a, $b = true, $echo = true): string => (string) $a === (string) $b ? " selected='selected'" : ''
+        );
+
+        $monitors = [
+            $this->makeMonitor('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'Nightly reports'),
+            $this->makeMonitor('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'Hourly sync'),
+        ];
+
+        $page = $this->buildPage(
+            $this->resolverWithApiToken('cmk_'.str_repeat('a', 43)),
+            static fn (string $token): array => $monitors,
+        );
+
+        ob_start();
+        $page->render_heartbeat_field();
+        $html = (string) ob_get_clean();
+
+        self::assertStringContainsString("selected='selected'", $html);
+        self::assertStringNotContainsString('(not in this account)', $html);
+    }
+
+    public function test_render_heartbeat_field_keeps_an_unknown_saved_uuid_selectable(): void
+    {
+        Functions\when('__')->returnArg();
+        Functions\when('esc_html__')->returnArg();
+        Functions\when('esc_attr')->returnArg();
+        Functions\when('esc_html')->returnArg();
+        Functions\when('get_option')->justReturn('cccccccc-cccc-4ccc-8ccc-cccccccccccc');
+        Functions\when('selected')->alias(
+            static fn ($a, $b = true, $echo = true): string => (string) $a === (string) $b ? " selected='selected'" : ''
+        );
+
+        $monitors = [
+            $this->makeMonitor('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'Nightly reports'),
+        ];
+
+        $page = $this->buildPage(
+            $this->resolverWithApiToken('cmk_'.str_repeat('a', 43)),
+            static fn (string $token): array => $monitors,
+        );
+
+        ob_start();
+        $page->render_heartbeat_field();
+        $html = (string) ob_get_clean();
+
+        // The saved-but-unlisted UUID must survive a form save rather than
+        // being silently dropped to the blank option.
+        self::assertStringContainsString('cccccccc-cccc-4ccc-8ccc-cccccccccccc', $html);
+        self::assertStringContainsString('(not in this account)', $html);
+    }
+
+    public function test_render_heartbeat_field_falls_back_to_text_input_when_listing_fails(): void
+    {
+        Functions\when('__')->returnArg();
+        Functions\when('esc_html__')->returnArg();
+        Functions\when('esc_attr')->returnArg();
+        Functions\when('esc_html')->returnArg();
+        Functions\when('get_option')->justReturn('');
+
+        $page = $this->buildPage(
+            $this->resolverWithApiToken('cmk_'.str_repeat('a', 43)),
+            static function (string $token): array {
+                throw new AuthenticationException('bad token');
+            },
+        );
+
+        ob_start();
+        $page->render_heartbeat_field();
+        $html = (string) ob_get_clean();
+
+        self::assertStringContainsString('<input type="text"', $html);
+        self::assertStringNotContainsString('<select', $html);
+    }
+
+    public function test_render_heartbeat_field_uses_text_input_and_skips_fetch_without_a_token(): void
+    {
+        Functions\when('esc_html__')->returnArg();
+        Functions\when('esc_attr')->returnArg();
+        Functions\when('get_option')->justReturn('');
+
+        $listerCalled = false;
+        $page = $this->buildPage(
+            null,
+            static function (string $token) use (&$listerCalled): array {
+                $listerCalled = true;
+
+                return [];
+            },
+        );
+
+        ob_start();
+        $page->render_heartbeat_field();
+        $html = (string) ob_get_clean();
+
+        self::assertStringContainsString('<input type="text"', $html);
+        self::assertStringNotContainsString('<select', $html);
+        self::assertFalse($listerCalled, 'the lister must not run when no API token is configured');
+    }
+
+    public function test_render_api_intro_reports_connected_monitor_count(): void
+    {
+        Functions\when('__')->returnArg();
+        Functions\when('esc_html__')->returnArg();
+        Functions\when('esc_html')->returnArg();
+        Functions\when('_n')->alias(
+            static fn (string $single, string $plural, int $number, string $domain = ''): string => 1 === $number ? $single : $plural
+        );
+
+        $monitors = [$this->makeMonitor('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'Nightly reports')];
+
+        $page = $this->buildPage(
+            $this->resolverWithApiToken('cmk_'.str_repeat('a', 43)),
+            static fn (string $token): array => $monitors,
+        );
+
+        ob_start();
+        $page->render_api_intro();
+        $html = (string) ob_get_clean();
+
+        self::assertStringContainsString('notice-success', $html);
+        self::assertStringContainsString('Connected', $html);
+    }
+
+    public function test_render_api_intro_shows_warning_notice_when_authentication_fails(): void
+    {
+        Functions\when('__')->returnArg();
+        Functions\when('esc_html__')->returnArg();
+        Functions\when('esc_html')->returnArg();
+
+        $page = $this->buildPage(
+            $this->resolverWithApiToken('cmk_'.str_repeat('a', 43)),
+            static function (string $token): array {
+                throw new AuthenticationException('bad token');
+            },
+        );
+
+        ob_start();
+        $page->render_api_intro();
+        $html = (string) ob_get_clean();
+
+        self::assertStringContainsString('notice-warning', $html);
+        self::assertStringContainsString('authenticate', $html);
+        self::assertStringNotContainsString('Upgrade your plan', $html);
+    }
+
+    public function test_render_api_intro_shows_upgrade_link_on_plan_restriction(): void
+    {
+        Functions\when('__')->returnArg();
+        Functions\when('esc_html__')->returnArg();
+        Functions\when('esc_html')->returnArg();
+        Functions\when('esc_url')->returnArg();
+
+        $page = $this->buildPage(
+            $this->resolverWithApiToken('cmk_'.str_repeat('a', 43)),
+            static function (string $token): array {
+                throw new PlanRestrictionException('plan too low', 'https://cronheart.com/billing/upgrade');
+            },
+        );
+
+        ob_start();
+        $page->render_api_intro();
+        $html = (string) ob_get_clean();
+
+        self::assertStringContainsString('notice-warning', $html);
+        self::assertStringContainsString('Upgrade your plan', $html);
+        self::assertStringContainsString('https://cronheart.com/billing/upgrade', $html);
+    }
+
+    public function test_render_api_intro_handles_rate_limit_with_a_retry_notice(): void
+    {
+        Functions\when('__')->returnArg();
+        Functions\when('esc_html__')->returnArg();
+        Functions\when('esc_html')->returnArg();
+
+        $page = $this->buildPage(
+            $this->resolverWithApiToken('cmk_'.str_repeat('a', 43)),
+            static function (string $token): array {
+                throw new RateLimitException('slow down', 30);
+            },
+        );
+
+        ob_start();
+        $page->render_api_intro();
+        $html = (string) ob_get_clean();
+
+        self::assertStringContainsString('notice-warning', $html);
+        self::assertStringContainsString('rate-limiting', $html);
+    }
+
+    public function test_render_falls_back_with_generic_notice_on_transport_failure(): void
+    {
+        Functions\when('__')->returnArg();
+        Functions\when('esc_html__')->returnArg();
+        Functions\when('esc_html')->returnArg();
+        Functions\when('esc_attr')->returnArg();
+        Functions\when('get_option')->justReturn('');
+
+        // The catch-all \Throwable arm — any ApiException subclass other
+        // than the three named ones (here a transport failure), plus the
+        // misconfigured-endpoint \RuntimeException, lands here.
+        $lister = static function (string $token): array {
+            throw new ApiTransportException('connection refused');
+        };
+
+        $intro = $this->buildPage($this->resolverWithApiToken('cmk_'.str_repeat('a', 43)), $lister);
+        ob_start();
+        $intro->render_api_intro();
+        $introHtml = (string) ob_get_clean();
+
+        self::assertStringContainsString('notice-warning', $introHtml);
+        self::assertStringContainsString('Could not reach', $introHtml);
+        self::assertStringNotContainsString('Upgrade your plan', $introHtml);
+
+        $field = $this->buildPage($this->resolverWithApiToken('cmk_'.str_repeat('a', 43)), $lister);
+        ob_start();
+        $field->render_heartbeat_field();
+        $fieldHtml = (string) ob_get_clean();
+
+        self::assertStringContainsString('<input type="text"', $fieldHtml);
+        self::assertStringNotContainsString('<select', $fieldHtml);
+    }
+
+    public function test_render_api_intro_reports_an_account_with_no_monitors(): void
+    {
+        Functions\when('__')->returnArg();
+        Functions\when('esc_html__')->returnArg();
+        Functions\when('esc_html')->returnArg();
+
+        $page = $this->buildPage(
+            $this->resolverWithApiToken('cmk_'.str_repeat('a', 43)),
+            static fn (string $token): array => [],
+        );
+
+        ob_start();
+        $page->render_api_intro();
+        $html = (string) ob_get_clean();
+
+        self::assertStringContainsString('notice-info', $html);
+        self::assertStringContainsString('no monitors yet', $html);
+        self::assertStringNotContainsString('notice-success', $html);
     }
 
     public function test_render_aborts_with_wp_die_when_user_lacks_capability(): void
@@ -156,14 +558,57 @@ final class SettingsPageTest extends TestCase
         $this->buildPage()->render();
     }
 
-    private function buildPage(): SettingsPage
+    private function buildPage(?Resolver $resolver = null, ?\Closure $monitorLister = null): SettingsPage
     {
-        $resolver = new Resolver(
+        $resolver ??= new Resolver(
             constantReader: static fn (string $name): ?string => null,
             optionReader: static fn (string $name) => null,
             filterApplier: static fn (string $name, array $value) => $value,
         );
 
-        return new SettingsPage(new EventList($resolver));
+        return new SettingsPage(new EventList($resolver), $resolver, $monitorLister);
+    }
+
+    /**
+     * A resolver whose API token comes from the option layer, so
+     * `apiToken()` is non-null and the picker fetch path engages.
+     */
+    private function resolverWithApiToken(string $token): Resolver
+    {
+        return new Resolver(
+            constantReader: static fn (string $name): ?string => null,
+            optionReader: static fn (string $name) => Resolver::API_TOKEN_OPTION === $name ? $token : null,
+            filterApplier: static fn (string $name, array $value) => $value,
+        );
+    }
+
+    private function makeMonitor(string $uuid, string $name): Monitor
+    {
+        return new Monitor(
+            $uuid,
+            $name,
+            ScheduleKind::Interval,
+            '300',
+            'UTC',
+            60,
+            MonitorStatus::Up,
+            null,
+            null,
+            new \DateTimeImmutable('2026-01-01T00:00:00+00:00'),
+            'https://cronheart.com/ping/'.$uuid,
+            'https://cronheart.com/badge/'.$uuid.'.svg',
+        );
+    }
+
+    /**
+     * @param array<string, mixed> $constants
+     */
+    private function resolverWithConstants(array $constants): Resolver
+    {
+        return new Resolver(
+            constantReader: static fn (string $name) => \array_key_exists($name, $constants) ? $constants[$name] : null,
+            optionReader: static fn (string $name) => null,
+            filterApplier: static fn (string $name, array $value) => $value,
+        );
     }
 }
