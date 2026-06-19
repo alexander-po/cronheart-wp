@@ -6,7 +6,9 @@ namespace Cronheart\WP\Admin;
 
 use Cronheart\WP\Api\ManagementClient;
 use Cronheart\WP\Config\Resolver;
+use CronMonitor\Api\Dto\Account;
 use CronMonitor\Api\Dto\Monitor;
+use CronMonitor\Api\Dto\MonitorBudget;
 use CronMonitor\Api\Exception\AuthenticationException;
 use CronMonitor\Api\Exception\PlanRestrictionException;
 use CronMonitor\Api\Exception\RateLimitException;
@@ -89,6 +91,33 @@ final class SettingsPage
      * restriction that carried an `upgrade_url`.
      */
     private ?string $apiUpgradeUrl = null;
+
+    /**
+     * The management client for this request, built at most once from the
+     * factory and reused across the monitor listing and the account fetch.
+     * Null once {@see $managementClientResolved} is set if no factory or
+     * token is configured.
+     */
+    private ?ManagementClient $managementClient = null;
+
+    /**
+     * Guards the management-client build so the factory runs at most once
+     * per request, whether it returns a client, returns null, or throws.
+     */
+    private bool $managementClientResolved = false;
+
+    /**
+     * Guards {@see maybeFetchAccount()} so the account snapshot is fetched
+     * at most once per request.
+     */
+    private bool $accountFetchAttempted = false;
+
+    /**
+     * The account snapshot for the connection card, or null when not yet
+     * fetched or the account call failed (the connection notice, driven by
+     * the monitor listing, explains any failure; the card stays hidden).
+     */
+    private ?Account $account = null;
 
     /**
      * @param \Closure(string): ManagementClient $managementClientFactory builds the
@@ -271,21 +300,92 @@ final class SettingsPage
                     'Connected to cronheart.com, but this account has no monitors yet. Create one at cronheart.com, then reload this page to pick it below.',
                     'cronheart'
                 ).'</p></div>';
-
-                return;
+            } else {
+                echo '<div class="notice notice-success inline"><p>'.esc_html(\sprintf(
+                    /* translators: %d: number of monitors found on the connected cronheart.com account. */
+                    _n(
+                        'Connected — %d monitor available in the picker below.',
+                        'Connected — %d monitors available in the picker below.',
+                        $count,
+                        'cronheart'
+                    ),
+                    $count
+                )).'</p></div>';
             }
 
-            echo '<div class="notice notice-success inline"><p>'.esc_html(\sprintf(
-                /* translators: %d: number of monitors found on the connected cronheart.com account. */
-                _n(
-                    'Connected — %d monitor available in the picker below.',
-                    'Connected — %d monitors available in the picker below.',
-                    $count,
-                    'cronheart'
-                ),
-                $count
-            )).'</p></div>';
+            $this->render_account_card();
         }
+    }
+
+    /**
+     * Render the account plan / budget / rate-limit card under the
+     * connection notice. Silent when the account snapshot is unavailable
+     * (no client, or the account call failed — the connection notice
+     * already explains the failure). Shows an upgrade nudge once the
+     * monitor budget is nearly exhausted.
+     */
+    private function render_account_card(): void
+    {
+        $account = $this->maybeFetchAccount();
+        if (null === $account) {
+            return;
+        }
+
+        $budget = $account->monitorBudget;
+        $rate = $account->apiRateLimit;
+
+        echo '<div class="cronheart-account-card">';
+        echo '<p><strong>'.esc_html__('Account', 'cronheart').'</strong></p>';
+        echo '<ul>';
+        printf(
+            '<li>%s</li>',
+            esc_html(\sprintf(
+                /* translators: %s: the cronheart.com plan name (for example, Starter). */
+                __('Plan: %s', 'cronheart'),
+                $account->plan->label
+            ))
+        );
+        printf(
+            '<li>%s</li>',
+            esc_html(\sprintf(
+                /* translators: 1: monitors in use; 2: monitor limit; 3: monitors remaining. */
+                __('Monitors: %1$d of %2$d used (%3$d remaining)', 'cronheart'),
+                $budget->used,
+                $budget->limit,
+                $budget->remaining
+            ))
+        );
+        printf(
+            '<li>%s</li>',
+            esc_html(\sprintf(
+                /* translators: 1: API requests remaining; 2: API rate-limit ceiling. */
+                __('API rate limit: %1$d of %2$d requests remaining', 'cronheart'),
+                $rate->remaining,
+                $rate->limit
+            ))
+        );
+        echo '</ul>';
+
+        if (self::monitorBudgetNearlyExhausted($budget)) {
+            printf(
+                '<p>%1$s <a href="%2$s" target="_blank" rel="noopener noreferrer">%3$s</a></p>',
+                esc_html__('You are close to your monitor limit.', 'cronheart'),
+                esc_url('https://cronheart.com'),
+                esc_html__('Upgrade your plan for more monitors', 'cronheart')
+            );
+        }
+
+        echo '</div>';
+    }
+
+    /**
+     * Whether the account has used at least 80% of its monitor budget — the
+     * trigger for the upgrade nudge. Integer-only so there is no float
+     * rounding at the boundary; a zero (or unknown) limit never trips it.
+     */
+    private static function monitorBudgetNearlyExhausted(MonitorBudget $budget): bool
+    {
+        return $budget->limit > 0 && $budget->used * 5 >= $budget->limit * 4;
     }
 
     /**
@@ -303,17 +403,12 @@ final class SettingsPage
         }
         $this->apiFetchAttempted = true;
 
-        if (null === $this->managementClientFactory) {
-            return;
-        }
-
-        $token = $this->resolver->apiToken();
-        if (null === $token) {
-            return;
-        }
-
         try {
-            $this->apiMonitors = array_values(($this->managementClientFactory)($token)->listMonitors());
+            $client = $this->managementClient();
+            if (null === $client) {
+                return;
+            }
+            $this->apiMonitors = array_values($client->listMonitors());
         } catch (PlanRestrictionException $e) {
             $this->apiUpgradeUrl = $e->upgradeUrl;
             $this->apiError = __('Your cronheart.com plan does not include API access. Upgrade to Starter or higher to pick monitors from a list — you can still paste a monitor UUID below.', 'cronheart');
@@ -324,6 +419,61 @@ final class SettingsPage
         } catch (\Throwable) {
             $this->apiError = __('Could not reach cronheart.com to load your monitors. You can paste a monitor UUID manually below.', 'cronheart');
         }
+    }
+
+    /**
+     * Build the management client once per request, or return null when no
+     * factory or token is configured (the picker and account card stay
+     * hidden and the manual UUID field is used). The factory throws only on
+     * a misconfigured endpoint; callers invoke this inside their own try so
+     * that failure maps to the same fallback as any other API error. The
+     * built client is reused across the monitor listing and the account
+     * fetch, so wp-admin builds at most one client per render.
+     */
+    private function managementClient(): ?ManagementClient
+    {
+        if ($this->managementClientResolved) {
+            return $this->managementClient;
+        }
+        $this->managementClientResolved = true;
+
+        if (null === $this->managementClientFactory) {
+            return null;
+        }
+
+        $token = $this->resolver->apiToken();
+        if (null === $token) {
+            return null;
+        }
+
+        $this->managementClient = ($this->managementClientFactory)($token);
+
+        return $this->managementClient;
+    }
+
+    /**
+     * Fetch the account snapshot once per request for the connection card,
+     * reusing the client built for the monitor listing. Only the connection
+     * notice (driven by the monitor listing) reports failures to the
+     * operator; if the account call fails on its own the card simply does
+     * not render, so this swallows its errors and returns null. Never lets
+     * an exception escape into the admin page render.
+     */
+    private function maybeFetchAccount(): ?Account
+    {
+        if ($this->accountFetchAttempted) {
+            return $this->account;
+        }
+        $this->accountFetchAttempted = true;
+
+        try {
+            $client = $this->managementClient();
+            $this->account = null === $client ? null : $client->account();
+        } catch (\Throwable) {
+            $this->account = null;
+        }
+
+        return $this->account;
     }
 
     /**

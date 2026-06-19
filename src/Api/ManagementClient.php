@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Cronheart\WP\Api;
 
+use CronMonitor\Api\Dto\Account;
 use CronMonitor\Api\Dto\Monitor;
 use CronMonitor\Api\MonitorApiClient;
 use CronMonitor\Client\Configuration;
@@ -80,6 +81,18 @@ final class ManagementClient
         }
 
         return $monitors;
+    }
+
+    /**
+     * The account snapshot — plan, monitor budget, and live API
+     * rate-limit standing — for the settings-page account card. Sends
+     * nothing beyond the bearer token.
+     *
+     * @throws \CronMonitor\Api\Exception\ApiException
+     */
+    public function account(): Account
+    {
+        return $this->client()->getAccount();
     }
 
     private function client(): MonitorApiClient

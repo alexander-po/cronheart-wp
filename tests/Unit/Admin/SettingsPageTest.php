@@ -548,6 +548,88 @@ final class SettingsPageTest extends TestCase
         self::assertStringNotContainsString('notice-success', $html);
     }
 
+    public function test_render_api_intro_renders_the_account_plan_card(): void
+    {
+        Functions\when('__')->returnArg();
+        Functions\when('esc_html__')->returnArg();
+        Functions\when('esc_html')->returnArg();
+        Functions\when('esc_url')->returnArg();
+        Functions\when('_n')->alias(
+            static fn (string $single, string $plural, int $number, string $domain = ''): string => 1 === $number ? $single : $plural
+        );
+
+        $monitors = [$this->makeMonitor('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'Nightly reports')];
+
+        $page = $this->buildPage(
+            $this->resolverWithApiToken('cmk_'.str_repeat('a', 43)),
+            $this->factoryReturning($monitors, $this->accountWire('Starter', 50, 10)),
+        );
+
+        ob_start();
+        $page->render_api_intro();
+        $html = (string) ob_get_clean();
+
+        self::assertStringContainsString('cronheart-account-card', $html);
+        self::assertStringContainsString('Plan: Starter', $html);
+        self::assertStringContainsString('Monitors: 10 of 50 used (40 remaining)', $html);
+        self::assertStringContainsString('API rate limit: 119 of 120 requests remaining', $html);
+        self::assertStringNotContainsString('close to your monitor limit', $html);
+    }
+
+    public function test_account_card_shows_upgrade_nudge_when_budget_nearly_exhausted(): void
+    {
+        Functions\when('__')->returnArg();
+        Functions\when('esc_html__')->returnArg();
+        Functions\when('esc_html')->returnArg();
+        Functions\when('esc_url')->returnArg();
+        Functions\when('_n')->alias(
+            static fn (string $single, string $plural, int $number, string $domain = ''): string => 1 === $number ? $single : $plural
+        );
+
+        $monitors = [$this->makeMonitor('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'Nightly reports')];
+
+        $page = $this->buildPage(
+            $this->resolverWithApiToken('cmk_'.str_repeat('a', 43)),
+            $this->factoryReturning($monitors, $this->accountWire('Starter', 20, 18)),
+        );
+
+        ob_start();
+        $page->render_api_intro();
+        $html = (string) ob_get_clean();
+
+        self::assertStringContainsString('close to your monitor limit', $html);
+        self::assertStringContainsString('Upgrade your plan for more monitors', $html);
+        self::assertStringContainsString('https://cronheart.com', $html);
+    }
+
+    public function test_account_card_absent_when_account_fetch_fails_but_page_still_renders(): void
+    {
+        Functions\when('__')->returnArg();
+        Functions\when('esc_html__')->returnArg();
+        Functions\when('esc_html')->returnArg();
+        Functions\when('_n')->alias(
+            static fn (string $single, string $plural, int $number, string $domain = ''): string => 1 === $number ? $single : $plural
+        );
+
+        $monitors = [$this->makeMonitor('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'Nightly reports')];
+
+        $page = $this->buildPage(
+            $this->resolverWithApiToken('cmk_'.str_repeat('a', 43)),
+            $this->factoryMonitorsOkAccountFails($monitors),
+        );
+
+        ob_start();
+        $page->render_api_intro();
+        $html = (string) ob_get_clean();
+
+        // The monitor listing succeeded, so the connection notice still
+        // shows; the account card is simply absent and nothing fatals.
+        self::assertStringContainsString('notice-success', $html);
+        self::assertStringContainsString('Connected', $html);
+        self::assertStringNotContainsString('cronheart-account-card', $html);
+        self::assertStringNotContainsString('Plan: ', $html);
+    }
+
     public function test_render_aborts_with_wp_die_when_user_lacks_capability(): void
     {
         Functions\expect('current_user_can')->once()->with('manage_options')->andReturn(false);
@@ -577,16 +659,51 @@ final class SettingsPageTest extends TestCase
 
     /**
      * A factory whose {@see ManagementClient} lists exactly the given
-     * monitors. The client drives a real SDK {@see MonitorApiClient} over a
-     * fake PSR-18 transport returning one canned page, so the Part-A picker
-     * swap is exercised end to end (the resolver → factory → listMonitors
-     * path) rather than short-circuited with a plain array return.
+     * monitors and, on the account endpoint, returns the given account
+     * snapshot (a default Starter snapshot when null). The client drives a
+     * real SDK {@see MonitorApiClient} over a fake PSR-18 transport, so the
+     * resolver → factory → listMonitors / account paths are exercised end to
+     * end rather than short-circuited with a plain return. The connection
+     * status renders the monitor listing first and the account card second,
+     * so the queue order is [monitors page, account snapshot].
+     *
+     * @param list<Monitor>             $monitors
+     * @param array<string, mixed>|null $account  default Starter snapshot when null
+     *
+     * @return \Closure(string): ManagementClient
+     */
+    private function factoryReturning(array $monitors, ?array $account = null): \Closure
+    {
+        $page = (string) json_encode([
+            'data' => array_map([$this, 'monitorWire'], $monitors),
+            'total' => \count($monitors),
+            'limit' => 100,
+            'offset' => 0,
+        ]);
+        $accountJson = (string) json_encode($account ?? $this->accountWire('Starter', 50, 10));
+
+        return static function (string $token) use ($page, $accountJson): ManagementClient {
+            $factory = new Psr17Factory();
+            $configuration = new Configuration('https://cronheart.com', apiKey: 'cmk_test_token');
+            $http = new FakeHttpClient([
+                new Response(200, ['Content-Type' => 'application/json'], $page),
+                new Response(200, ['Content-Type' => 'application/json'], $accountJson),
+            ]);
+
+            return new ManagementClient($configuration, new MonitorApiClient($configuration, $http, $factory, $factory));
+        };
+    }
+
+    /**
+     * A factory whose monitor listing succeeds but whose account call fails
+     * (HTTP 500). With `retries: 0` the failed account GET is a single
+     * request — the SDK otherwise retries 5xx on a retryable GET.
      *
      * @param list<Monitor> $monitors
      *
      * @return \Closure(string): ManagementClient
      */
-    private function factoryReturning(array $monitors): \Closure
+    private function factoryMonitorsOkAccountFails(array $monitors): \Closure
     {
         $page = (string) json_encode([
             'data' => array_map([$this, 'monitorWire'], $monitors),
@@ -597,11 +714,26 @@ final class SettingsPageTest extends TestCase
 
         return static function (string $token) use ($page): ManagementClient {
             $factory = new Psr17Factory();
-            $configuration = new Configuration('https://cronheart.com', apiKey: 'cmk_test_token');
-            $http = new FakeHttpClient([new Response(200, ['Content-Type' => 'application/json'], $page)]);
+            $configuration = new Configuration('https://cronheart.com', apiKey: 'cmk_test_token', retries: 0);
+            $http = new FakeHttpClient([
+                new Response(200, ['Content-Type' => 'application/json'], $page),
+                new Response(500, ['Content-Type' => 'application/problem+json'], '{"title":"Server error","status":500}'),
+            ]);
 
             return new ManagementClient($configuration, new MonitorApiClient($configuration, $http, $factory, $factory));
         };
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function accountWire(string $planLabel, int $limit, int $used): array
+    {
+        return [
+            'plan' => ['key' => strtolower($planLabel), 'label' => $planLabel, 'monitor_limit' => $limit],
+            'monitor_budget' => ['used' => $used, 'limit' => $limit, 'remaining' => $limit - $used],
+            'api_rate_limit' => ['limit' => 120, 'remaining' => 119],
+        ];
     }
 
     /**
