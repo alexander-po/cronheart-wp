@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Cronheart\WP\Admin;
 
+use Cronheart\WP\Api\ManagementClient;
 use Cronheart\WP\Config\Resolver;
 use CronMonitor\Api\Dto\Monitor;
 use CronMonitor\Api\Exception\AuthenticationException;
@@ -59,9 +60,9 @@ final class SettingsPage
     public const API_TOKEN_CLEAR_FIELD = 'cronheart_api_token_clear';
 
     /**
-     * Guards the lazy {@see maybeFetchMonitors()} call so the lister
-     * closure runs at most once per request, regardless of how many of the
-     * field renderers ask for the result.
+     * Guards the lazy {@see maybeFetchMonitors()} call so the management
+     * client is built and queried at most once per request, regardless of
+     * how many of the field renderers ask for the result.
      */
     private bool $apiFetchAttempted = false;
 
@@ -90,21 +91,25 @@ final class SettingsPage
     private ?string $apiUpgradeUrl = null;
 
     /**
-     * @param \Closure(string): list<Monitor> $monitorLister lists the
-     *                                                       account's
-     *                                                       monitors for
-     *                                                       the picker;
-     *                                                       throws on any
-     *                                                       API failure.
-     *                                                       Null disables
-     *                                                       the picker
-     *                                                       (manual UUID
-     *                                                       entry only)
+     * @param \Closure(string): ManagementClient $managementClientFactory builds the
+     *                                                                    admin-only
+     *                                                                    management
+     *                                                                    client for a
+     *                                                                    token; throws
+     *                                                                    only on a
+     *                                                                    misconfigured
+     *                                                                    endpoint. Its
+     *                                                                    calls throw the
+     *                                                                    SDK's typed
+     *                                                                    exceptions. Null
+     *                                                                    disables the
+     *                                                                    picker (manual
+     *                                                                    UUID entry only)
      */
     public function __construct(
         private readonly EventList $eventList,
         private readonly Resolver $resolver,
-        private readonly ?\Closure $monitorLister = null,
+        private readonly ?\Closure $managementClientFactory = null,
     ) {
     }
 
@@ -285,8 +290,8 @@ final class SettingsPage
 
     /**
      * Lazily list the account's monitors for the heartbeat picker, at most
-     * once per request. Only runs when both a token and a lister closure
-     * are present. Every failure mode is caught and mapped to a translated
+     * once per request. Only runs when both a token and a management-client
+     * factory are present. Every failure mode is caught and mapped to a translated
      * {@see $apiError} message (never the token value) so the caller can
      * fall back to the manual UUID field — this method never lets an
      * exception escape into the admin page render.
@@ -298,7 +303,7 @@ final class SettingsPage
         }
         $this->apiFetchAttempted = true;
 
-        if (null === $this->monitorLister) {
+        if (null === $this->managementClientFactory) {
             return;
         }
 
@@ -308,7 +313,7 @@ final class SettingsPage
         }
 
         try {
-            $this->apiMonitors = array_values(($this->monitorLister)($token));
+            $this->apiMonitors = array_values(($this->managementClientFactory)($token)->listMonitors());
         } catch (PlanRestrictionException $e) {
             $this->apiUpgradeUrl = $e->upgradeUrl;
             $this->apiError = __('Your cronheart.com plan does not include API access. Upgrade to Starter or higher to pick monitors from a list — you can still paste a monitor UUID below.', 'cronheart');

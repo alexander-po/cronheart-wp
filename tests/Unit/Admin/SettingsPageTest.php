@@ -9,7 +9,9 @@ use Brain\Monkey\Actions;
 use Brain\Monkey\Functions;
 use Cronheart\WP\Admin\EventList;
 use Cronheart\WP\Admin\SettingsPage;
+use Cronheart\WP\Api\ManagementClient;
 use Cronheart\WP\Config\Resolver;
+use Cronheart\WP\Tests\Support\FakeHttpClient;
 use CronMonitor\Api\Dto\Monitor;
 use CronMonitor\Api\Dto\MonitorStatus;
 use CronMonitor\Api\Dto\ScheduleKind;
@@ -17,6 +19,10 @@ use CronMonitor\Api\Exception\ApiTransportException;
 use CronMonitor\Api\Exception\AuthenticationException;
 use CronMonitor\Api\Exception\PlanRestrictionException;
 use CronMonitor\Api\Exception\RateLimitException;
+use CronMonitor\Api\MonitorApiClient;
+use CronMonitor\Client\Configuration;
+use Nyholm\Psr7\Factory\Psr17Factory;
+use Nyholm\Psr7\Response;
 use PHPUnit\Framework\TestCase;
 
 final class SettingsPageTest extends TestCase
@@ -277,7 +283,7 @@ final class SettingsPageTest extends TestCase
 
         $page = $this->buildPage(
             $this->resolverWithApiToken('cmk_'.str_repeat('a', 43)),
-            static fn (string $token): array => $monitors,
+            $this->factoryReturning($monitors),
         );
 
         ob_start();
@@ -310,7 +316,7 @@ final class SettingsPageTest extends TestCase
 
         $page = $this->buildPage(
             $this->resolverWithApiToken('cmk_'.str_repeat('a', 43)),
-            static fn (string $token): array => $monitors,
+            $this->factoryReturning($monitors),
         );
 
         ob_start();
@@ -338,7 +344,7 @@ final class SettingsPageTest extends TestCase
 
         $page = $this->buildPage(
             $this->resolverWithApiToken('cmk_'.str_repeat('a', 43)),
-            static fn (string $token): array => $monitors,
+            $this->factoryReturning($monitors),
         );
 
         ob_start();
@@ -361,7 +367,7 @@ final class SettingsPageTest extends TestCase
 
         $page = $this->buildPage(
             $this->resolverWithApiToken('cmk_'.str_repeat('a', 43)),
-            static function (string $token): array {
+            static function (string $token): ManagementClient {
                 throw new AuthenticationException('bad token');
             },
         );
@@ -383,10 +389,10 @@ final class SettingsPageTest extends TestCase
         $listerCalled = false;
         $page = $this->buildPage(
             null,
-            static function (string $token) use (&$listerCalled): array {
+            static function (string $token) use (&$listerCalled): ManagementClient {
                 $listerCalled = true;
 
-                return [];
+                throw new \LogicException('the management client factory must not run without a token');
             },
         );
 
@@ -412,7 +418,7 @@ final class SettingsPageTest extends TestCase
 
         $page = $this->buildPage(
             $this->resolverWithApiToken('cmk_'.str_repeat('a', 43)),
-            static fn (string $token): array => $monitors,
+            $this->factoryReturning($monitors),
         );
 
         ob_start();
@@ -431,7 +437,7 @@ final class SettingsPageTest extends TestCase
 
         $page = $this->buildPage(
             $this->resolverWithApiToken('cmk_'.str_repeat('a', 43)),
-            static function (string $token): array {
+            static function (string $token): ManagementClient {
                 throw new AuthenticationException('bad token');
             },
         );
@@ -454,7 +460,7 @@ final class SettingsPageTest extends TestCase
 
         $page = $this->buildPage(
             $this->resolverWithApiToken('cmk_'.str_repeat('a', 43)),
-            static function (string $token): array {
+            static function (string $token): ManagementClient {
                 throw new PlanRestrictionException('plan too low', 'https://cronheart.com/billing/upgrade');
             },
         );
@@ -476,7 +482,7 @@ final class SettingsPageTest extends TestCase
 
         $page = $this->buildPage(
             $this->resolverWithApiToken('cmk_'.str_repeat('a', 43)),
-            static function (string $token): array {
+            static function (string $token): ManagementClient {
                 throw new RateLimitException('slow down', 30);
             },
         );
@@ -500,7 +506,7 @@ final class SettingsPageTest extends TestCase
         // The catch-all \Throwable arm — any ApiException subclass other
         // than the three named ones (here a transport failure), plus the
         // misconfigured-endpoint \RuntimeException, lands here.
-        $lister = static function (string $token): array {
+        $lister = static function (string $token): ManagementClient {
             throw new ApiTransportException('connection refused');
         };
 
@@ -530,7 +536,7 @@ final class SettingsPageTest extends TestCase
 
         $page = $this->buildPage(
             $this->resolverWithApiToken('cmk_'.str_repeat('a', 43)),
-            static fn (string $token): array => [],
+            $this->factoryReturning([]),
         );
 
         ob_start();
@@ -558,7 +564,7 @@ final class SettingsPageTest extends TestCase
         $this->buildPage()->render();
     }
 
-    private function buildPage(?Resolver $resolver = null, ?\Closure $monitorLister = null): SettingsPage
+    private function buildPage(?Resolver $resolver = null, ?\Closure $managementClientFactory = null): SettingsPage
     {
         $resolver ??= new Resolver(
             constantReader: static fn (string $name): ?string => null,
@@ -566,7 +572,58 @@ final class SettingsPageTest extends TestCase
             filterApplier: static fn (string $name, array $value) => $value,
         );
 
-        return new SettingsPage(new EventList($resolver), $resolver, $monitorLister);
+        return new SettingsPage(new EventList($resolver), $resolver, $managementClientFactory);
+    }
+
+    /**
+     * A factory whose {@see ManagementClient} lists exactly the given
+     * monitors. The client drives a real SDK {@see MonitorApiClient} over a
+     * fake PSR-18 transport returning one canned page, so the Part-A picker
+     * swap is exercised end to end (the resolver → factory → listMonitors
+     * path) rather than short-circuited with a plain array return.
+     *
+     * @param list<Monitor> $monitors
+     *
+     * @return \Closure(string): ManagementClient
+     */
+    private function factoryReturning(array $monitors): \Closure
+    {
+        $page = (string) json_encode([
+            'data' => array_map([$this, 'monitorWire'], $monitors),
+            'total' => \count($monitors),
+            'limit' => 100,
+            'offset' => 0,
+        ]);
+
+        return static function (string $token) use ($page): ManagementClient {
+            $factory = new Psr17Factory();
+            $configuration = new Configuration('https://cronheart.com', apiKey: 'cmk_test_token');
+            $http = new FakeHttpClient([new Response(200, ['Content-Type' => 'application/json'], $page)]);
+
+            return new ManagementClient($configuration, new MonitorApiClient($configuration, $http, $factory, $factory));
+        };
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function monitorWire(Monitor $monitor): array
+    {
+        return [
+            'uuid' => $monitor->uuid,
+            'name' => $monitor->name,
+            'schedule_kind' => $monitor->scheduleKind->value,
+            'schedule_expr' => $monitor->scheduleExpr,
+            'tz' => $monitor->tz,
+            'grace_seconds' => $monitor->graceSeconds,
+            'status' => $monitor->status->value,
+            'next_expected_at' => $monitor->nextExpectedAt?->format(\DATE_ATOM),
+            'last_ping_at' => $monitor->lastPingAt?->format(\DATE_ATOM),
+            'created_at' => $monitor->createdAt->format(\DATE_ATOM),
+            'ping_url' => $monitor->pingUrl,
+            'badge_url' => $monitor->badgeUrl,
+            'snoozed_until' => $monitor->snoozedUntil?->format(\DATE_ATOM),
+        ];
     }
 
     /**
