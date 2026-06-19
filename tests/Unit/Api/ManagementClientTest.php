@@ -132,6 +132,27 @@ final class ManagementClientTest extends TestCase
         self::assertSame('https://cronheart.com/api/v1/monitors/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/unsnooze', (string) $request->getUri());
     }
 
+    public function test_create_interval_monitor_posts_bare_digit_schedule_and_idempotency_key(): void
+    {
+        [$management, $http] = $this->managementClient([
+            new Response(201, ['Content-Type' => 'application/json'], (string) json_encode($this->monitorWire('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'wp_version_check'))),
+        ]);
+
+        $management->createIntervalMonitor('wp_version_check', 43200, 'UTC', 4320, 'wp-abc123');
+
+        $request = $http->requests[0];
+        self::assertSame('POST', $request->getMethod());
+        self::assertSame('https://cronheart.com/api/v1/monitors', (string) $request->getUri());
+        self::assertSame('wp-abc123', $request->getHeaderLine('Idempotency-Key'));
+
+        $body = (array) json_decode($http->bodies[0], true);
+        self::assertSame('wp_version_check', $body['name']);
+        self::assertSame('interval', $body['schedule_kind']);
+        self::assertSame('43200', $body['schedule_expr'], 'bare interval seconds, no unit suffix');
+        self::assertSame('UTC', $body['tz']);
+        self::assertSame(4320, $body['grace_seconds']);
+    }
+
     /**
      * @param list<\Psr\Http\Message\ResponseInterface|\Throwable> $queue
      *

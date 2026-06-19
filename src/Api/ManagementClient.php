@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Cronheart\WP\Api;
 
 use CronMonitor\Api\Dto\Account;
+use CronMonitor\Api\Dto\CreateMonitorRequest;
 use CronMonitor\Api\Dto\Monitor;
+use CronMonitor\Api\Dto\ScheduleKind;
 use CronMonitor\Api\Dto\SnoozeDuration;
 use CronMonitor\Api\MonitorApiClient;
 use CronMonitor\Client\Configuration;
@@ -136,6 +138,32 @@ final class ManagementClient
     public function unsnooze(string $uuid): Monitor
     {
         return $this->client()->unsnoozeMonitor($uuid);
+    }
+
+    /**
+     * Create an interval monitor for an auto-discovered WP-Cron hook and
+     * return it. The schedule expression is the bare interval in seconds
+     * (the backend validates `ctype_digit`, 30..31,622,400); callers must
+     * pass values already clamped to the backend's ranges (see
+     * {@see \Cronheart\WP\Cron\IntervalMonitorBlueprint}). The idempotency
+     * key makes a double-clicked create a safe replay within the backend's
+     * 24h key TTL — but the real duplicate guard is only offering create on
+     * an unmapped hook; a same-key create with a changed body is a `409`
+     * {@see \CronMonitor\Api\Exception\ConflictException}.
+     *
+     * @throws \CronMonitor\Api\Exception\ApiException
+     */
+    public function createIntervalMonitor(string $name, int $intervalSeconds, string $tz, int $graceSeconds, string $idempotencyKey): Monitor
+    {
+        $request = new CreateMonitorRequest(
+            $name,
+            ScheduleKind::Interval,
+            (string) $intervalSeconds,
+            $tz,
+            $graceSeconds,
+        );
+
+        return $this->client()->createMonitor($request, $idempotencyKey);
     }
 
     private function client(): MonitorApiClient
