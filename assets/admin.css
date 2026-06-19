@@ -1,0 +1,41 @@
+/* Cronheart admin styling — Settings → Cronheart only. */
+
+.cronheart-account-card {
+	margin: 1em 0;
+	padding: 0.5em 1em;
+	max-width: 40em;
+	background: #fff;
+	border: 1px solid #c3c4c7;
+	border-left: 4px solid #2271b1;
+}
+
+.cronheart-account-card ul {
+	margin: 0.5em 0 0;
+	list-style: disc inside;
+}
+
+.cronheart-monitors {
+	margin-top: 0.5em;
+}
+
+.cronheart-monitors .cronheart-snooze-duration {
+	margin: 0 0.25em;
+	vertical-align: middle;
+}
+
+.cronheart-action {
+	margin-right: 0.25em;
+}
+
+/* The lifecycle JS toggles button visibility via the `hidden` attribute,
+   but WordPress core's `.button { display: inline-block }` overrides the
+   user-agent `[hidden] { display: none }` rule — so force it here. */
+.cronheart-action[hidden] {
+	display: none !important;
+}
+
+.cronheart-action-feedback {
+	margin-left: 0.5em;
+	color: #646970;
+	font-style: italic;
+}

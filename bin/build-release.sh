@@ -52,6 +52,10 @@ cp LICENSE "$STAGE_DIR/"
 cp composer.json "$STAGE_DIR/"
 cp composer.lock "$STAGE_DIR/"
 cp -R src "$STAGE_DIR/"
+# The plugin's own front-of-house assets (admin JS/CSS for the
+# monitor-lifecycle UI). Distinct from the WordPress.org SVN-root
+# `assets/` (icons/banners/screenshots), which is NOT shipped in the zip.
+cp -R assets "$STAGE_DIR/"
 cp -R vendor "$STAGE_DIR/"
 
 # Strip non-essential files from vendored packages. Composer's

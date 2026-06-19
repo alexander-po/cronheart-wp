@@ -120,6 +120,14 @@ final class SettingsPage
     private ?Account $account = null;
 
     /**
+     * The hook suffix {@see add_options_page()} returns for the Cronheart
+     * screen. Asset enqueuing is gated on it so the admin script and style
+     * load on that screen only, never site-wide. Null until the menu is
+     * registered (or if registration failed).
+     */
+    private ?string $hookSuffix = null;
+
+    /**
      * @param \Closure(string): ManagementClient $managementClientFactory builds the
      *                                                                    admin-only
      *                                                                    management
@@ -139,30 +147,71 @@ final class SettingsPage
         private readonly EventList $eventList,
         private readonly Resolver $resolver,
         private readonly ?\Closure $managementClientFactory = null,
+        private readonly string $pluginFile = '',
     ) {
     }
 
     /**
-     * Hook the admin-menu and admin-init callbacks. Safe to call
-     * outside of an admin request — both hooks only fire in admin
-     * context anyway, so the cost of registration is one closure
-     * each.
+     * Hook the admin-menu, admin-init, and asset-enqueue callbacks. Safe to
+     * call outside of an admin request — the hooks only fire in admin
+     * context anyway, so the cost of registration is one closure each.
      */
     public function register(): void
     {
         add_action('admin_menu', [$this, 'add_menu']);
         add_action('admin_init', [$this, 'register_settings']);
+        add_action('admin_enqueue_scripts', [$this, 'enqueue_assets']);
     }
 
     public function add_menu(): void
     {
-        add_options_page(
+        $hookSuffix = add_options_page(
             __('Cronheart', 'cronheart'),
             __('Cronheart', 'cronheart'),
             'manage_options',
             self::MENU_SLUG,
             [$this, 'render']
         );
+
+        $this->hookSuffix = \is_string($hookSuffix) ? $hookSuffix : null;
+    }
+
+    /**
+     * Enqueue the admin script + style, and localise the AJAX endpoint,
+     * nonce, and translated strings — on the Cronheart screen only. Gated on
+     * the hook suffix {@see add_menu()} captured from {@see add_options_page()},
+     * never a hard-coded page string, so the assets never load site-wide.
+     */
+    public function enqueue_assets(string $hook_suffix): void
+    {
+        if (null === $this->hookSuffix || $hook_suffix !== $this->hookSuffix || '' === $this->pluginFile) {
+            return;
+        }
+
+        $version = \defined('CRONHEART_VERSION') ? (string) \constant('CRONHEART_VERSION') : false;
+
+        wp_enqueue_style(
+            'cronheart-admin',
+            plugins_url('assets/admin.css', $this->pluginFile),
+            [],
+            $version
+        );
+        wp_enqueue_script(
+            'cronheart-admin',
+            plugins_url('assets/admin.js', $this->pluginFile),
+            [],
+            $version,
+            true
+        );
+        wp_localize_script('cronheart-admin', 'cronheartAdmin', [
+            'ajaxUrl' => admin_url('admin-ajax.php'),
+            'action' => Ajax::ACTION,
+            'nonce' => wp_create_nonce(Ajax::ACTION),
+            'i18n' => [
+                'working' => __('Working…', 'cronheart'),
+                'error' => __('Something went wrong. Please try again.', 'cronheart'),
+            ],
+        ]);
     }
 
     public function register_settings(): void
@@ -235,6 +284,7 @@ final class SettingsPage
         submit_button();
         echo '</form>';
 
+        $this->render_monitor_management();
         $this->render_event_table();
 
         echo '</div>';
@@ -571,7 +621,7 @@ final class SettingsPage
                 '<option value="%1$s"%2$s>%3$s</option>',
                 esc_attr($monitor->uuid),
                 selected($value, $monitor->uuid, false),
-                esc_html($monitor->name.' — '.$monitor->uuid)
+                esc_html($monitor->name.' — '.Ajax::statusLabel($monitor->status).' — '.$monitor->uuid)
             );
         }
 
@@ -690,6 +740,86 @@ final class SettingsPage
         );
 
         return $stored;
+    }
+
+    /**
+     * Render the "Your monitors" table — the account's monitors with their
+     * status, snooze deadline, and lifecycle action buttons (pause / resume
+     * / snooze / unsnooze). Reuses the listing already fetched for the
+     * picker, so it adds no extra API call; renders nothing when there is no
+     * connected listing. The buttons are wired by `assets/admin.js` to the
+     * authenticated AJAX endpoint; with JavaScript disabled the table is a
+     * read-only status view.
+     */
+    private function render_monitor_management(): void
+    {
+        if (!\is_array($this->apiMonitors) || [] === $this->apiMonitors) {
+            return;
+        }
+
+        echo '<h2>'.esc_html__('Your monitors', 'cronheart').'</h2>';
+        echo '<p class="description">'.esc_html__(
+            'Pause, snooze, or resume any monitor on this account. Changes apply immediately on cronheart.com.',
+            'cronheart'
+        ).'</p>';
+
+        echo '<table class="widefat striped cronheart-monitors">';
+        echo '<thead><tr>';
+        echo '<th>'.esc_html__('Monitor', 'cronheart').'</th>';
+        echo '<th>'.esc_html__('Status', 'cronheart').'</th>';
+        echo '<th>'.esc_html__('Snoozed until', 'cronheart').'</th>';
+        echo '<th>'.esc_html__('Actions', 'cronheart').'</th>';
+        echo '</tr></thead><tbody>';
+
+        foreach ($this->apiMonitors as $monitor) {
+            $this->render_monitor_row($monitor);
+        }
+
+        echo '</tbody></table>';
+    }
+
+    private function render_monitor_row(Monitor $monitor): void
+    {
+        $snoozeLabel = Ajax::snoozeUntilLabel($monitor->snoozedUntil);
+
+        printf(
+            '<tr data-cronheart-uuid="%1$s" data-cronheart-status="%2$s" data-cronheart-snoozed="%3$s">',
+            esc_attr($monitor->uuid),
+            esc_attr($monitor->status->value),
+            esc_attr(null === $monitor->snoozedUntil ? '0' : '1')
+        );
+
+        printf('<td><code>%s</code></td>', esc_html($monitor->name));
+        printf('<td class="cronheart-monitor-status">%s</td>', esc_html(Ajax::statusLabel($monitor->status)));
+        printf('<td class="cronheart-monitor-snooze">%s</td>', esc_html('' === $snoozeLabel ? '—' : $snoozeLabel));
+
+        echo '<td>';
+        printf(
+            '<button type="button" class="button cronheart-action" data-cronheart-op="pause">%s</button>',
+            esc_html__('Pause', 'cronheart')
+        );
+        printf(
+            '<button type="button" class="button cronheart-action" data-cronheart-op="resume">%s</button>',
+            esc_html__('Resume', 'cronheart')
+        );
+        echo '<select class="cronheart-snooze-duration" aria-label="'.esc_attr__('Snooze duration', 'cronheart').'">';
+        printf('<option value="1h">%s</option>', esc_html__('1 hour', 'cronheart'));
+        printf('<option value="4h">%s</option>', esc_html__('4 hours', 'cronheart'));
+        printf('<option value="1d">%s</option>', esc_html__('1 day', 'cronheart'));
+        printf('<option value="1w">%s</option>', esc_html__('1 week', 'cronheart'));
+        echo '</select>';
+        printf(
+            '<button type="button" class="button cronheart-action" data-cronheart-op="snooze">%s</button>',
+            esc_html__('Snooze', 'cronheart')
+        );
+        printf(
+            '<button type="button" class="button cronheart-action" data-cronheart-op="unsnooze">%s</button>',
+            esc_html__('Unsnooze', 'cronheart')
+        );
+        echo '<span class="cronheart-action-feedback" role="status" aria-live="polite"></span>';
+        echo '</td>';
+
+        echo '</tr>';
     }
 
     private function render_event_table(): void

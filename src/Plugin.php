@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Cronheart\WP;
 
+use Cronheart\WP\Admin\Ajax;
 use Cronheart\WP\Admin\EventList;
 use Cronheart\WP\Admin\SettingsPage;
 use Cronheart\WP\Api\Client;
@@ -71,11 +72,18 @@ final class Plugin
             $perEvent->register($resolver->eventHookNames());
         }, \PHP_INT_MAX);
 
-        // Admin Settings → Cronheart. Registering the menu and
-        // settings hooks outside an admin request is harmless — the
-        // hooks only fire on admin page loads — so we skip the
-        // `is_admin()` guard.
-        (new SettingsPage(new EventList($resolver), $resolver, self::buildManagementClientFactory($resolver)))->register();
+        // Admin Settings → Cronheart, plus the monitor-lifecycle AJAX
+        // surface. Registering these outside an admin request is harmless —
+        // the menu/settings hooks only fire on admin page loads, and the
+        // `wp_ajax_*` action only fires for an authenticated admin-ajax
+        // request — so we skip the `is_admin()` guard. Both share one
+        // management-client factory; the AJAX layer is admin-only by
+        // construction (no `nopriv` companion).
+        $managementClientFactory = self::buildManagementClientFactory($resolver);
+        $pluginFile = \defined('CRONHEART_PLUGIN_FILE') ? (string) \constant('CRONHEART_PLUGIN_FILE') : '';
+
+        (new SettingsPage(new EventList($resolver), $resolver, $managementClientFactory, $pluginFile))->register();
+        (new Ajax($resolver, $managementClientFactory))->register();
     }
 
     /**

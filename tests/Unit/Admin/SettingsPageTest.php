@@ -7,6 +7,7 @@ namespace Cronheart\WP\Tests\Unit\Admin;
 use Brain\Monkey;
 use Brain\Monkey\Actions;
 use Brain\Monkey\Functions;
+use Cronheart\WP\Admin\Ajax;
 use Cronheart\WP\Admin\EventList;
 use Cronheart\WP\Admin\SettingsPage;
 use Cronheart\WP\Api\ManagementClient;
@@ -630,6 +631,117 @@ final class SettingsPageTest extends TestCase
         self::assertStringNotContainsString('Plan: ', $html);
     }
 
+    public function test_picker_option_includes_the_monitor_status(): void
+    {
+        Functions\when('__')->returnArg();
+        Functions\when('esc_html__')->returnArg();
+        Functions\when('esc_attr')->returnArg();
+        Functions\when('esc_html')->returnArg();
+        Functions\when('get_option')->justReturn('');
+        Functions\when('selected')->alias(
+            static fn ($a, $b = true, $echo = true): string => (string) $a === (string) $b ? " selected='selected'" : ''
+        );
+
+        $monitors = [$this->makeMonitor(self::VALID_UUID, 'Nightly reports')];
+
+        $page = $this->buildPage(
+            $this->resolverWithApiToken('cmk_'.str_repeat('a', 43)),
+            $this->factoryReturning($monitors),
+        );
+
+        ob_start();
+        $page->render_heartbeat_field();
+        $html = (string) ob_get_clean();
+
+        // makeMonitor() uses MonitorStatus::Up — its label appears in the
+        // option text alongside the name and UUID.
+        self::assertStringContainsString('Nightly reports — Up — '.self::VALID_UUID, $html);
+    }
+
+    public function test_render_lists_account_monitors_with_lifecycle_actions(): void
+    {
+        Functions\when('__')->returnArg();
+        Functions\when('esc_html__')->returnArg();
+        Functions\when('esc_html')->returnArg();
+        Functions\when('esc_attr')->returnArg();
+        Functions\when('esc_attr__')->returnArg();
+        Functions\when('esc_url')->returnArg();
+        Functions\when('get_option')->justReturn('');
+        Functions\when('current_user_can')->justReturn(true);
+        Functions\when('settings_fields')->justReturn(null);
+        Functions\when('do_settings_sections')->justReturn(null);
+        Functions\when('submit_button')->justReturn(null);
+        Functions\when('selected')->alias(
+            static fn ($a, $b = true, $echo = true): string => (string) $a === (string) $b ? " selected='selected'" : ''
+        );
+
+        $monitors = [$this->makeMonitor(self::VALID_UUID, 'Nightly reports')];
+
+        $page = $this->buildPage(
+            $this->resolverWithApiToken('cmk_'.str_repeat('a', 43)),
+            $this->factoryReturning($monitors),
+        );
+
+        // Populate the listing the way a real render would (the section
+        // callbacks fetch it); do_settings_sections is stubbed, so prime it
+        // through the heartbeat field, then render the page shell.
+        ob_start();
+        $page->render_heartbeat_field();
+        ob_get_clean();
+
+        ob_start();
+        $page->render();
+        $html = (string) ob_get_clean();
+
+        self::assertStringContainsString('cronheart-monitors', $html);
+        self::assertStringContainsString('data-cronheart-uuid="'.self::VALID_UUID.'"', $html);
+        self::assertStringContainsString('data-cronheart-op="pause"', $html);
+        self::assertStringContainsString('data-cronheart-op="snooze"', $html);
+        self::assertStringContainsString('data-cronheart-op="unsnooze"', $html);
+        self::assertStringContainsString('cronheart-snooze-duration', $html);
+    }
+
+    public function test_enqueue_assets_skips_other_admin_screens(): void
+    {
+        Functions\when('__')->returnArg();
+        Functions\when('add_options_page')->justReturn('settings_page_cronheart');
+        Functions\expect('wp_enqueue_script')->never();
+        Functions\expect('wp_enqueue_style')->never();
+        Functions\expect('wp_localize_script')->never();
+
+        $page = $this->buildPage(null, null, '/plugins/cronheart/cronheart.php');
+        $page->add_menu();
+        $page->enqueue_assets('index.php');
+
+        $this->addToAssertionCount(1);
+    }
+
+    public function test_enqueue_assets_loads_on_the_cronheart_screen(): void
+    {
+        Functions\when('__')->returnArg();
+        Functions\when('add_options_page')->justReturn('settings_page_cronheart');
+        Functions\when('plugins_url')->alias(static fn (string $path, string $file): string => 'https://example.test/'.$path);
+        Functions\when('admin_url')->alias(static fn (string $path = ''): string => 'https://example.test/wp-admin/'.$path);
+        Functions\when('wp_create_nonce')->justReturn('nonce-value');
+        Functions\expect('wp_enqueue_style')->once();
+        Functions\expect('wp_enqueue_script')->once();
+        Functions\expect('wp_localize_script')
+            ->once()
+            ->with(
+                'cronheart-admin',
+                'cronheartAdmin',
+                self::callback(static fn (array $data): bool => 'nonce-value' === $data['nonce']
+                    && Ajax::ACTION === $data['action']
+                    && \is_array($data['i18n'])),
+            );
+
+        $page = $this->buildPage(null, null, '/plugins/cronheart/cronheart.php');
+        $page->add_menu();
+        $page->enqueue_assets('settings_page_cronheart');
+
+        $this->addToAssertionCount(4);
+    }
+
     public function test_render_aborts_with_wp_die_when_user_lacks_capability(): void
     {
         Functions\expect('current_user_can')->once()->with('manage_options')->andReturn(false);
@@ -646,7 +758,7 @@ final class SettingsPageTest extends TestCase
         $this->buildPage()->render();
     }
 
-    private function buildPage(?Resolver $resolver = null, ?\Closure $managementClientFactory = null): SettingsPage
+    private function buildPage(?Resolver $resolver = null, ?\Closure $managementClientFactory = null, string $pluginFile = ''): SettingsPage
     {
         $resolver ??= new Resolver(
             constantReader: static fn (string $name): ?string => null,
@@ -654,7 +766,7 @@ final class SettingsPageTest extends TestCase
             filterApplier: static fn (string $name, array $value) => $value,
         );
 
-        return new SettingsPage(new EventList($resolver), $resolver, $managementClientFactory);
+        return new SettingsPage(new EventList($resolver), $resolver, $managementClientFactory, $pluginFile);
     }
 
     /**

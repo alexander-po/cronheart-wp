@@ -3,36 +3,63 @@
     <description>
         WordPress Coding Standards for the user-facing surface of the
         cronheart-wp plugin: the entry point `cronheart.php` and the
-        admin / WP-Cron-facing code that interacts directly with
-        WordPress's procedural API.
+        admin layer under `src/Admin/` that interacts directly with
+        WordPress's procedural API (Settings API, admin-AJAX).
 
-        The plugin's SDK-style internal code under `src/` lives by
-        PSR-12 + strict_types and is enforced by php-cs-fixer (see
-        `.php-cs-fixer.dist.php`). WPCS conventions (snake_case names,
-        Yoda comparisons, prefix-everything-in-the-global-namespace)
-        are explicitly scoped away from `src/` because dual-enforcing
-        both rule sets produces unfixable noise.
+        Two scopes, deliberately. The full WordPress rule set
+        (`WordPress-Core` + `WordPress-Extra` — tabs, snake_case names,
+        Yoda comparisons, etc.) applies ONLY to `cronheart.php`, which is
+        hand-written in WP style. The `src/Admin/` classes are PSR-12 +
+        strict_types (php-cs-fixer owns their layout, see
+        `.php-cs-fixer.dist.php`); dual-enforcing both rule sets on them
+        produces unfixable noise. So for the admin layer we run only the
+        sniffs that actually matter for a wp_ajax / Settings-API surface —
+        output escaping, nonce verification, input sanitisation, and the
+        text domain — which were previously not run at all (the admin files
+        were outside phpcs scope), making "phpcs clean" vacuous there.
     </description>
 
     <file>cronheart.php</file>
-
-    <!-- When the Admin / Hooks layers land they will be folded into
-         this scope via additional <file> entries — but kept narrowly
-         to the files that touch WP globals, never blanket-applied to
-         the whole tree. -->
+    <file>src/Admin/</file>
 
     <arg name="basepath" value="."/>
     <arg name="colors"/>
     <arg name="extensions" value="php"/>
     <arg value="ps"/>
 
-    <rule ref="WordPress-Core"/>
-    <rule ref="WordPress-Extra"/>
+    <!-- Full WP coding standards: WP-style entry point only. -->
+    <rule ref="WordPress-Core">
+        <include-pattern>*/cronheart.php</include-pattern>
+    </rule>
+    <rule ref="WordPress-Extra">
+        <include-pattern>*/cronheart.php</include-pattern>
+    </rule>
 
-    <!-- Plugin text domain enforcement. Anything user-facing must use
-         this domain (`__( 'foo', 'cronheart' )`), matching the
-         `Text Domain:` header in cronheart.php. -->
+    <!-- Security + i18n sniffs: run on BOTH the WP-style entry point AND the
+         admin / AJAX layer — escape every echo, verify a nonce before
+         touching request input, sanitise that input at the boundary, and use
+         the plugin text domain. These checks are inherited from
+         WordPress-Core/Extra above, whose `*/cronheart.php` include-pattern
+         would otherwise confine them to the entry point (PHPCS merges
+         include-patterns per sniff, so a bare re-reference does NOT widen the
+         scope). The explicit `src/Admin` pattern on each is what makes them
+         actually run on the wp_ajax / Settings-API surface they matter for —
+         without it, "phpcs clean" would be vacuous there. -->
+    <rule ref="WordPress.Security.EscapeOutput">
+        <include-pattern>*/cronheart.php</include-pattern>
+        <include-pattern>*/src/Admin/*</include-pattern>
+    </rule>
+    <rule ref="WordPress.Security.NonceVerification">
+        <include-pattern>*/cronheart.php</include-pattern>
+        <include-pattern>*/src/Admin/*</include-pattern>
+    </rule>
+    <rule ref="WordPress.Security.ValidatedSanitizedInput">
+        <include-pattern>*/cronheart.php</include-pattern>
+        <include-pattern>*/src/Admin/*</include-pattern>
+    </rule>
     <rule ref="WordPress.WP.I18n">
+        <include-pattern>*/cronheart.php</include-pattern>
+        <include-pattern>*/src/Admin/*</include-pattern>
         <properties>
             <property name="text_domain" type="array">
                 <element value="cronheart"/>

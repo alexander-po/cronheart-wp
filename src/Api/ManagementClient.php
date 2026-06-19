@@ -6,6 +6,7 @@ namespace Cronheart\WP\Api;
 
 use CronMonitor\Api\Dto\Account;
 use CronMonitor\Api\Dto\Monitor;
+use CronMonitor\Api\Dto\SnoozeDuration;
 use CronMonitor\Api\MonitorApiClient;
 use CronMonitor\Client\Configuration;
 
@@ -93,6 +94,48 @@ final class ManagementClient
     public function account(): Account
     {
         return $this->client()->getAccount();
+    }
+
+    /**
+     * Pause a monitor (no alerts while paused) and return its refreshed
+     * snapshot. Sends only the monitor UUID and the action.
+     *
+     * @throws \CronMonitor\Api\Exception\ApiException
+     */
+    public function pause(string $uuid): Monitor
+    {
+        return $this->client()->pauseMonitor($uuid);
+    }
+
+    /**
+     * Resume a paused monitor and return its refreshed snapshot.
+     *
+     * @throws \CronMonitor\Api\Exception\ApiException
+     */
+    public function resume(string $uuid): Monitor
+    {
+        return $this->client()->resumeMonitor($uuid);
+    }
+
+    /**
+     * Snooze a monitor for a bounded duration and return its refreshed
+     * snapshot. The duration is a closed enum (1h / 4h / 1d / 1w).
+     *
+     * @throws \CronMonitor\Api\Exception\ApiException
+     */
+    public function snooze(string $uuid, SnoozeDuration $duration): Monitor
+    {
+        return $this->client()->snoozeMonitor($uuid, $duration);
+    }
+
+    /**
+     * Clear an active snooze and return the monitor's refreshed snapshot.
+     *
+     * @throws \CronMonitor\Api\Exception\ApiException
+     */
+    public function unsnooze(string $uuid): Monitor
+    {
+        return $this->client()->unsnoozeMonitor($uuid);
     }
 
     private function client(): MonitorApiClient
