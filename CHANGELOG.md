@@ -8,6 +8,29 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 _Nothing yet — open a PR and add your entry under the appropriate subsection._
 
+## [0.3.0] — 2026-06-19
+
+Consumes the management surface added in `cron-monitor/php-sdk` 1.1.0 to turn Settings → Cronheart from a heartbeat-picker into a small monitor console: an account/plan card and a "Your monitors" table with pause / resume / snooze / unsnooze actions. This introduces the plugin's first authenticated admin-AJAX layer and the shared `Api\ManagementClient` seam. The never-throw runtime ping path (`Api\Client`) and its tokenless, least-privilege configuration are untouched — the write-capable `cmk_` token still leaves the site only from wp-admin, on an administrator's explicit action.
+
+Part D (a per-event monitoring UI that discovers WP-Cron events and auto-creates interval monitors) is deferred to 0.4.0; this release deliberately makes no `createMonitor` calls.
+
+### Added
+
+- **`Api\ManagementClient`** — the admin-only, throwing counterpart to the never-throw ping `Api\Client`. Wraps the SDK's `MonitorApiClient`, built lazily and only from wp-admin, and exposes `listMonitors()` (capped at 200), `account()`, and `pause()` / `resume()` / `snooze(SnoozeDuration)` / `unsnooze()`. Lets the SDK's typed `ApiException` subclasses propagate so the admin layer owns the exception→notice/JSON ladder.
+- **Account plan / budget card** on the settings page via `getAccount()` — plan label, monitor budget (used / limit / remaining), and API rate-limit standing, with an upgrade nudge once the monitor budget is ≥ 80% used.
+- **`Admin\Ajax`** — the plugin's first `wp_ajax_*` handler (`cronheart_monitor_action`) for monitor lifecycle. Per-request contract: `check_ajax_referer` (a stale nonce returns a "reload and try again" JSON error, not a dead `-1`), `current_user_can( 'manage_options' )`, boundary validation (UUID v4 pattern, an `op` allow-list, the closed `SnoozeDuration` enum), and a thrown `ApiException` mapped to `wp_send_json_error` — never an uncaught 500. No `wp_ajax_nopriv_*` companion is registered.
+- **"Your monitors" management table** on the settings page (reuses the listing already fetched for the picker) and **monitor status in the heartbeat picker** options.
+- **`assets/admin.js` + `assets/admin.css`**, enqueued only on the Cronheart screen (gated on the hook suffix from `add_options_page()`). The script injects every API-returned string via `textContent` (never `innerHTML`) and takes its own user-facing strings from `wp_localize_script`.
+
+### Changed
+
+- Bumped the bundled `cron-monitor/php-sdk` constraint from `^1.0` to `^1.1`; the shipped `vendor/` tree changes by the SDK only.
+- The heartbeat picker now fetches through `ManagementClient::listMonitors()` instead of a bespoke lister closure (behaviour-identical: the > 200 cap and a saved-but-unlisted UUID staying selectable both survive).
+- **Rewrote** the `readme.txt` "External services" disclosure to cover the new wp-admin reads (`GET /api/v1/account`) and writes (`POST /api/v1/monitors/<uuid>/{pause,resume,snooze,unsnooze}`); all remain token-gated, wp-admin-only, and on an administrator's explicit action.
+- `bin/build-release.sh` now stages `assets/` into the release zip (without it the admin JS/CSS would never ship).
+- `.phpcs.xml.dist` now lints `src/Admin/` with the security and i18n sniffs (`EscapeOutput`, `NonceVerification`, `ValidatedSanitizedInput`, `WP.I18n`); the full WordPress layout rule set stays scoped to `cronheart.php` so the PSR-12 admin classes do not collide with it.
+- Bumped the plugin header `Version` and `readme.txt` `Stable tag` to `0.3.0`.
+
 ## [0.2.1] — 2026-06-09
 
 Documentation-only release on top of 0.2.0; the plugin code is identical. Cut so the WordPress.org Plugin Directory ships the monitor picker with an accurate readme and an updated screenshot (0.2.0 went to GitHub/Packagist only).
