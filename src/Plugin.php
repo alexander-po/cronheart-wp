@@ -5,11 +5,13 @@ declare(strict_types=1);
 namespace Cronheart\WP;
 
 use Cronheart\WP\Admin\Ajax;
+use Cronheart\WP\Admin\CronEventsScreen;
 use Cronheart\WP\Admin\EventList;
 use Cronheart\WP\Admin\SettingsPage;
 use Cronheart\WP\Api\Client;
 use Cronheart\WP\Api\ManagementClient;
 use Cronheart\WP\Config\Resolver;
+use Cronheart\WP\Cron\EventDiscovery;
 use Cronheart\WP\Hooks\HeartbeatHandler;
 use Cronheart\WP\Hooks\HeartbeatScheduler;
 use Cronheart\WP\Hooks\PerEventInstrumentation;
@@ -81,9 +83,27 @@ final class Plugin
         // construction (no `nopriv` companion).
         $managementClientFactory = self::buildManagementClientFactory($resolver);
         $pluginFile = \defined('CRONHEART_PLUGIN_FILE') ? (string) \constant('CRONHEART_PLUGIN_FILE') : '';
+        $eventDiscovery = self::buildEventDiscovery();
 
         (new SettingsPage(new EventList($resolver), $resolver, $managementClientFactory, $pluginFile))->register();
-        (new Ajax($resolver, $managementClientFactory))->register();
+        (new CronEventsScreen($eventDiscovery, $resolver, $managementClientFactory, $pluginFile))->register();
+        (new Ajax($resolver, $managementClientFactory, $eventDiscovery))->register();
+    }
+
+    /**
+     * Wire {@see EventDiscovery} to the real WordPress runtime. As with the
+     * resolver, the closures are the only point of contact with WP globals so
+     * the service itself stays unit-testable. `_get_cron_array()` is a private
+     * core function (no public wrapper), guarded with `function_exists` for
+     * defensiveness; an absent / empty cron option yields no events.
+     */
+    private static function buildEventDiscovery(): EventDiscovery
+    {
+        return new EventDiscovery(
+            cronArrayReader: static fn () => \function_exists('_get_cron_array') ? _get_cron_array() : false,
+            schedulesReader: static fn () => wp_get_schedules(),
+            timezoneReader: static fn () => wp_timezone_string(),
+        );
     }
 
     /**

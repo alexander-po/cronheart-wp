@@ -666,6 +666,7 @@ final class SettingsPageTest extends TestCase
         Functions\when('esc_attr')->returnArg();
         Functions\when('esc_attr__')->returnArg();
         Functions\when('esc_url')->returnArg();
+        Functions\when('admin_url')->returnArg();
         Functions\when('get_option')->justReturn('');
         Functions\when('current_user_can')->justReturn(true);
         Functions\when('settings_fields')->justReturn(null);
@@ -731,7 +732,8 @@ final class SettingsPageTest extends TestCase
                 'cronheart-admin',
                 'cronheartAdmin',
                 self::callback(static fn (array $data): bool => 'nonce-value' === $data['nonce']
-                    && Ajax::ACTION === $data['action']
+                    && Ajax::ACTION === $data['actions']['monitor']
+                    && Ajax::ACTION_MAP_EVENT === $data['actions']['mapEvent']
                     && \is_array($data['i18n'])),
             );
 
