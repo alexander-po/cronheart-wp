@@ -187,4 +187,96 @@ namespace {
 
         return $result;
     }
+
+    function esc_attr__(string $text, string $domain = 'default'): string
+    {
+        return $text;
+    }
+
+    /**
+     * @return int|false
+     */
+    function check_ajax_referer(string $action = '-1', string|false $query_arg = false, bool $stop = true)
+    {
+        return 1;
+    }
+
+    /**
+     * @param mixed $data
+     *
+     * @return never
+     */
+    function wp_send_json_success($data = null, ?int $status_code = null, int $options = 0): void
+    {
+        exit;
+    }
+
+    /**
+     * @param mixed $data
+     *
+     * @return never
+     */
+    function wp_send_json_error($data = null, ?int $status_code = null, int $options = 0): void
+    {
+        exit;
+    }
+
+    function sanitize_text_field(string $str): string
+    {
+        return trim($str);
+    }
+
+    function sanitize_key(string $key): string
+    {
+        return strtolower($key);
+    }
+
+    /**
+     * @template T
+     *
+     * @param T $value
+     *
+     * @return T
+     */
+    function wp_unslash($value)
+    {
+        return $value;
+    }
+
+    function plugins_url(string $path = '', string $plugin = ''): string
+    {
+        return $path;
+    }
+
+    /**
+     * @param array<int, string> $deps
+     */
+    function wp_enqueue_style(string $handle, string $src = '', array $deps = [], string|bool|null $ver = false, string $media = 'all'): void
+    {
+    }
+
+    /**
+     * @param array<int, string> $deps
+     */
+    function wp_enqueue_script(string $handle, string $src = '', array $deps = [], string|bool|null $ver = false, bool $in_footer = false): void
+    {
+    }
+
+    /**
+     * @param array<string, mixed> $l10n
+     */
+    function wp_localize_script(string $handle, string $object_name, array $l10n): bool
+    {
+        return true;
+    }
+
+    function wp_create_nonce(string $action = '-1'): string
+    {
+        return 'nonce';
+    }
+
+    function admin_url(string $path = '', string $scheme = 'admin'): string
+    {
+        return 'https://example.test/wp-admin/'.$path;
+    }
 }

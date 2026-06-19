@@ -7,9 +7,12 @@ namespace Cronheart\WP\Tests\Unit\Admin;
 use Brain\Monkey;
 use Brain\Monkey\Actions;
 use Brain\Monkey\Functions;
+use Cronheart\WP\Admin\Ajax;
 use Cronheart\WP\Admin\EventList;
 use Cronheart\WP\Admin\SettingsPage;
+use Cronheart\WP\Api\ManagementClient;
 use Cronheart\WP\Config\Resolver;
+use Cronheart\WP\Tests\Support\FakeHttpClient;
 use CronMonitor\Api\Dto\Monitor;
 use CronMonitor\Api\Dto\MonitorStatus;
 use CronMonitor\Api\Dto\ScheduleKind;
@@ -17,6 +20,10 @@ use CronMonitor\Api\Exception\ApiTransportException;
 use CronMonitor\Api\Exception\AuthenticationException;
 use CronMonitor\Api\Exception\PlanRestrictionException;
 use CronMonitor\Api\Exception\RateLimitException;
+use CronMonitor\Api\MonitorApiClient;
+use CronMonitor\Client\Configuration;
+use Nyholm\Psr7\Factory\Psr17Factory;
+use Nyholm\Psr7\Response;
 use PHPUnit\Framework\TestCase;
 
 final class SettingsPageTest extends TestCase
@@ -277,7 +284,7 @@ final class SettingsPageTest extends TestCase
 
         $page = $this->buildPage(
             $this->resolverWithApiToken('cmk_'.str_repeat('a', 43)),
-            static fn (string $token): array => $monitors,
+            $this->factoryReturning($monitors),
         );
 
         ob_start();
@@ -310,7 +317,7 @@ final class SettingsPageTest extends TestCase
 
         $page = $this->buildPage(
             $this->resolverWithApiToken('cmk_'.str_repeat('a', 43)),
-            static fn (string $token): array => $monitors,
+            $this->factoryReturning($monitors),
         );
 
         ob_start();
@@ -338,7 +345,7 @@ final class SettingsPageTest extends TestCase
 
         $page = $this->buildPage(
             $this->resolverWithApiToken('cmk_'.str_repeat('a', 43)),
-            static fn (string $token): array => $monitors,
+            $this->factoryReturning($monitors),
         );
 
         ob_start();
@@ -361,7 +368,7 @@ final class SettingsPageTest extends TestCase
 
         $page = $this->buildPage(
             $this->resolverWithApiToken('cmk_'.str_repeat('a', 43)),
-            static function (string $token): array {
+            static function (string $token): ManagementClient {
                 throw new AuthenticationException('bad token');
             },
         );
@@ -383,10 +390,10 @@ final class SettingsPageTest extends TestCase
         $listerCalled = false;
         $page = $this->buildPage(
             null,
-            static function (string $token) use (&$listerCalled): array {
+            static function (string $token) use (&$listerCalled): ManagementClient {
                 $listerCalled = true;
 
-                return [];
+                throw new \LogicException('the management client factory must not run without a token');
             },
         );
 
@@ -412,7 +419,7 @@ final class SettingsPageTest extends TestCase
 
         $page = $this->buildPage(
             $this->resolverWithApiToken('cmk_'.str_repeat('a', 43)),
-            static fn (string $token): array => $monitors,
+            $this->factoryReturning($monitors),
         );
 
         ob_start();
@@ -431,7 +438,7 @@ final class SettingsPageTest extends TestCase
 
         $page = $this->buildPage(
             $this->resolverWithApiToken('cmk_'.str_repeat('a', 43)),
-            static function (string $token): array {
+            static function (string $token): ManagementClient {
                 throw new AuthenticationException('bad token');
             },
         );
@@ -454,7 +461,7 @@ final class SettingsPageTest extends TestCase
 
         $page = $this->buildPage(
             $this->resolverWithApiToken('cmk_'.str_repeat('a', 43)),
-            static function (string $token): array {
+            static function (string $token): ManagementClient {
                 throw new PlanRestrictionException('plan too low', 'https://cronheart.com/billing/upgrade');
             },
         );
@@ -476,7 +483,7 @@ final class SettingsPageTest extends TestCase
 
         $page = $this->buildPage(
             $this->resolverWithApiToken('cmk_'.str_repeat('a', 43)),
-            static function (string $token): array {
+            static function (string $token): ManagementClient {
                 throw new RateLimitException('slow down', 30);
             },
         );
@@ -500,7 +507,7 @@ final class SettingsPageTest extends TestCase
         // The catch-all \Throwable arm — any ApiException subclass other
         // than the three named ones (here a transport failure), plus the
         // misconfigured-endpoint \RuntimeException, lands here.
-        $lister = static function (string $token): array {
+        $lister = static function (string $token): ManagementClient {
             throw new ApiTransportException('connection refused');
         };
 
@@ -530,7 +537,7 @@ final class SettingsPageTest extends TestCase
 
         $page = $this->buildPage(
             $this->resolverWithApiToken('cmk_'.str_repeat('a', 43)),
-            static fn (string $token): array => [],
+            $this->factoryReturning([]),
         );
 
         ob_start();
@@ -540,6 +547,199 @@ final class SettingsPageTest extends TestCase
         self::assertStringContainsString('notice-info', $html);
         self::assertStringContainsString('no monitors yet', $html);
         self::assertStringNotContainsString('notice-success', $html);
+    }
+
+    public function test_render_api_intro_renders_the_account_plan_card(): void
+    {
+        Functions\when('__')->returnArg();
+        Functions\when('esc_html__')->returnArg();
+        Functions\when('esc_html')->returnArg();
+        Functions\when('esc_url')->returnArg();
+        Functions\when('_n')->alias(
+            static fn (string $single, string $plural, int $number, string $domain = ''): string => 1 === $number ? $single : $plural
+        );
+
+        $monitors = [$this->makeMonitor('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'Nightly reports')];
+
+        $page = $this->buildPage(
+            $this->resolverWithApiToken('cmk_'.str_repeat('a', 43)),
+            $this->factoryReturning($monitors, $this->accountWire('Starter', 50, 10)),
+        );
+
+        ob_start();
+        $page->render_api_intro();
+        $html = (string) ob_get_clean();
+
+        self::assertStringContainsString('cronheart-account-card', $html);
+        self::assertStringContainsString('Plan: Starter', $html);
+        self::assertStringContainsString('Monitors: 10 of 50 used (40 remaining)', $html);
+        self::assertStringContainsString('API rate limit: 119 of 120 requests remaining', $html);
+        self::assertStringNotContainsString('close to your monitor limit', $html);
+    }
+
+    public function test_account_card_shows_upgrade_nudge_when_budget_nearly_exhausted(): void
+    {
+        Functions\when('__')->returnArg();
+        Functions\when('esc_html__')->returnArg();
+        Functions\when('esc_html')->returnArg();
+        Functions\when('esc_url')->returnArg();
+        Functions\when('_n')->alias(
+            static fn (string $single, string $plural, int $number, string $domain = ''): string => 1 === $number ? $single : $plural
+        );
+
+        $monitors = [$this->makeMonitor('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'Nightly reports')];
+
+        $page = $this->buildPage(
+            $this->resolverWithApiToken('cmk_'.str_repeat('a', 43)),
+            $this->factoryReturning($monitors, $this->accountWire('Starter', 20, 18)),
+        );
+
+        ob_start();
+        $page->render_api_intro();
+        $html = (string) ob_get_clean();
+
+        self::assertStringContainsString('close to your monitor limit', $html);
+        self::assertStringContainsString('Upgrade your plan for more monitors', $html);
+        self::assertStringContainsString('https://cronheart.com', $html);
+    }
+
+    public function test_account_card_absent_when_account_fetch_fails_but_page_still_renders(): void
+    {
+        Functions\when('__')->returnArg();
+        Functions\when('esc_html__')->returnArg();
+        Functions\when('esc_html')->returnArg();
+        Functions\when('_n')->alias(
+            static fn (string $single, string $plural, int $number, string $domain = ''): string => 1 === $number ? $single : $plural
+        );
+
+        $monitors = [$this->makeMonitor('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'Nightly reports')];
+
+        $page = $this->buildPage(
+            $this->resolverWithApiToken('cmk_'.str_repeat('a', 43)),
+            $this->factoryMonitorsOkAccountFails($monitors),
+        );
+
+        ob_start();
+        $page->render_api_intro();
+        $html = (string) ob_get_clean();
+
+        // The monitor listing succeeded, so the connection notice still
+        // shows; the account card is simply absent and nothing fatals.
+        self::assertStringContainsString('notice-success', $html);
+        self::assertStringContainsString('Connected', $html);
+        self::assertStringNotContainsString('cronheart-account-card', $html);
+        self::assertStringNotContainsString('Plan: ', $html);
+    }
+
+    public function test_picker_option_includes_the_monitor_status(): void
+    {
+        Functions\when('__')->returnArg();
+        Functions\when('esc_html__')->returnArg();
+        Functions\when('esc_attr')->returnArg();
+        Functions\when('esc_html')->returnArg();
+        Functions\when('get_option')->justReturn('');
+        Functions\when('selected')->alias(
+            static fn ($a, $b = true, $echo = true): string => (string) $a === (string) $b ? " selected='selected'" : ''
+        );
+
+        $monitors = [$this->makeMonitor(self::VALID_UUID, 'Nightly reports')];
+
+        $page = $this->buildPage(
+            $this->resolverWithApiToken('cmk_'.str_repeat('a', 43)),
+            $this->factoryReturning($monitors),
+        );
+
+        ob_start();
+        $page->render_heartbeat_field();
+        $html = (string) ob_get_clean();
+
+        // makeMonitor() uses MonitorStatus::Up — its label appears in the
+        // option text alongside the name and UUID.
+        self::assertStringContainsString('Nightly reports — Up — '.self::VALID_UUID, $html);
+    }
+
+    public function test_render_lists_account_monitors_with_lifecycle_actions(): void
+    {
+        Functions\when('__')->returnArg();
+        Functions\when('esc_html__')->returnArg();
+        Functions\when('esc_html')->returnArg();
+        Functions\when('esc_attr')->returnArg();
+        Functions\when('esc_attr__')->returnArg();
+        Functions\when('esc_url')->returnArg();
+        Functions\when('get_option')->justReturn('');
+        Functions\when('current_user_can')->justReturn(true);
+        Functions\when('settings_fields')->justReturn(null);
+        Functions\when('do_settings_sections')->justReturn(null);
+        Functions\when('submit_button')->justReturn(null);
+        Functions\when('selected')->alias(
+            static fn ($a, $b = true, $echo = true): string => (string) $a === (string) $b ? " selected='selected'" : ''
+        );
+
+        $monitors = [$this->makeMonitor(self::VALID_UUID, 'Nightly reports')];
+
+        $page = $this->buildPage(
+            $this->resolverWithApiToken('cmk_'.str_repeat('a', 43)),
+            $this->factoryReturning($monitors),
+        );
+
+        // Populate the listing the way a real render would (the section
+        // callbacks fetch it); do_settings_sections is stubbed, so prime it
+        // through the heartbeat field, then render the page shell.
+        ob_start();
+        $page->render_heartbeat_field();
+        ob_get_clean();
+
+        ob_start();
+        $page->render();
+        $html = (string) ob_get_clean();
+
+        self::assertStringContainsString('cronheart-monitors', $html);
+        self::assertStringContainsString('data-cronheart-uuid="'.self::VALID_UUID.'"', $html);
+        self::assertStringContainsString('data-cronheart-op="pause"', $html);
+        self::assertStringContainsString('data-cronheart-op="snooze"', $html);
+        self::assertStringContainsString('data-cronheart-op="unsnooze"', $html);
+        self::assertStringContainsString('cronheart-snooze-duration', $html);
+    }
+
+    public function test_enqueue_assets_skips_other_admin_screens(): void
+    {
+        Functions\when('__')->returnArg();
+        Functions\when('add_options_page')->justReturn('settings_page_cronheart');
+        Functions\expect('wp_enqueue_script')->never();
+        Functions\expect('wp_enqueue_style')->never();
+        Functions\expect('wp_localize_script')->never();
+
+        $page = $this->buildPage(null, null, '/plugins/cronheart/cronheart.php');
+        $page->add_menu();
+        $page->enqueue_assets('index.php');
+
+        $this->addToAssertionCount(1);
+    }
+
+    public function test_enqueue_assets_loads_on_the_cronheart_screen(): void
+    {
+        Functions\when('__')->returnArg();
+        Functions\when('add_options_page')->justReturn('settings_page_cronheart');
+        Functions\when('plugins_url')->alias(static fn (string $path, string $file): string => 'https://example.test/'.$path);
+        Functions\when('admin_url')->alias(static fn (string $path = ''): string => 'https://example.test/wp-admin/'.$path);
+        Functions\when('wp_create_nonce')->justReturn('nonce-value');
+        Functions\expect('wp_enqueue_style')->once();
+        Functions\expect('wp_enqueue_script')->once();
+        Functions\expect('wp_localize_script')
+            ->once()
+            ->with(
+                'cronheart-admin',
+                'cronheartAdmin',
+                self::callback(static fn (array $data): bool => 'nonce-value' === $data['nonce']
+                    && Ajax::ACTION === $data['action']
+                    && \is_array($data['i18n'])),
+            );
+
+        $page = $this->buildPage(null, null, '/plugins/cronheart/cronheart.php');
+        $page->add_menu();
+        $page->enqueue_assets('settings_page_cronheart');
+
+        $this->addToAssertionCount(4);
     }
 
     public function test_render_aborts_with_wp_die_when_user_lacks_capability(): void
@@ -558,7 +758,7 @@ final class SettingsPageTest extends TestCase
         $this->buildPage()->render();
     }
 
-    private function buildPage(?Resolver $resolver = null, ?\Closure $monitorLister = null): SettingsPage
+    private function buildPage(?Resolver $resolver = null, ?\Closure $managementClientFactory = null, string $pluginFile = ''): SettingsPage
     {
         $resolver ??= new Resolver(
             constantReader: static fn (string $name): ?string => null,
@@ -566,7 +766,108 @@ final class SettingsPageTest extends TestCase
             filterApplier: static fn (string $name, array $value) => $value,
         );
 
-        return new SettingsPage(new EventList($resolver), $resolver, $monitorLister);
+        return new SettingsPage(new EventList($resolver), $resolver, $managementClientFactory, $pluginFile);
+    }
+
+    /**
+     * A factory whose {@see ManagementClient} lists exactly the given
+     * monitors and, on the account endpoint, returns the given account
+     * snapshot (a default Starter snapshot when null). The client drives a
+     * real SDK {@see MonitorApiClient} over a fake PSR-18 transport, so the
+     * resolver → factory → listMonitors / account paths are exercised end to
+     * end rather than short-circuited with a plain return. The connection
+     * status renders the monitor listing first and the account card second,
+     * so the queue order is [monitors page, account snapshot].
+     *
+     * @param list<Monitor>             $monitors
+     * @param array<string, mixed>|null $account  default Starter snapshot when null
+     *
+     * @return \Closure(string): ManagementClient
+     */
+    private function factoryReturning(array $monitors, ?array $account = null): \Closure
+    {
+        $page = (string) json_encode([
+            'data' => array_map([$this, 'monitorWire'], $monitors),
+            'total' => \count($monitors),
+            'limit' => 100,
+            'offset' => 0,
+        ]);
+        $accountJson = (string) json_encode($account ?? $this->accountWire('Starter', 50, 10));
+
+        return static function (string $token) use ($page, $accountJson): ManagementClient {
+            $factory = new Psr17Factory();
+            $configuration = new Configuration('https://cronheart.com', apiKey: 'cmk_test_token');
+            $http = new FakeHttpClient([
+                new Response(200, ['Content-Type' => 'application/json'], $page),
+                new Response(200, ['Content-Type' => 'application/json'], $accountJson),
+            ]);
+
+            return new ManagementClient($configuration, new MonitorApiClient($configuration, $http, $factory, $factory));
+        };
+    }
+
+    /**
+     * A factory whose monitor listing succeeds but whose account call fails
+     * (HTTP 500). With `retries: 0` the failed account GET is a single
+     * request — the SDK otherwise retries 5xx on a retryable GET.
+     *
+     * @param list<Monitor> $monitors
+     *
+     * @return \Closure(string): ManagementClient
+     */
+    private function factoryMonitorsOkAccountFails(array $monitors): \Closure
+    {
+        $page = (string) json_encode([
+            'data' => array_map([$this, 'monitorWire'], $monitors),
+            'total' => \count($monitors),
+            'limit' => 100,
+            'offset' => 0,
+        ]);
+
+        return static function (string $token) use ($page): ManagementClient {
+            $factory = new Psr17Factory();
+            $configuration = new Configuration('https://cronheart.com', apiKey: 'cmk_test_token', retries: 0);
+            $http = new FakeHttpClient([
+                new Response(200, ['Content-Type' => 'application/json'], $page),
+                new Response(500, ['Content-Type' => 'application/problem+json'], '{"title":"Server error","status":500}'),
+            ]);
+
+            return new ManagementClient($configuration, new MonitorApiClient($configuration, $http, $factory, $factory));
+        };
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function accountWire(string $planLabel, int $limit, int $used): array
+    {
+        return [
+            'plan' => ['key' => strtolower($planLabel), 'label' => $planLabel, 'monitor_limit' => $limit],
+            'monitor_budget' => ['used' => $used, 'limit' => $limit, 'remaining' => $limit - $used],
+            'api_rate_limit' => ['limit' => 120, 'remaining' => 119],
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function monitorWire(Monitor $monitor): array
+    {
+        return [
+            'uuid' => $monitor->uuid,
+            'name' => $monitor->name,
+            'schedule_kind' => $monitor->scheduleKind->value,
+            'schedule_expr' => $monitor->scheduleExpr,
+            'tz' => $monitor->tz,
+            'grace_seconds' => $monitor->graceSeconds,
+            'status' => $monitor->status->value,
+            'next_expected_at' => $monitor->nextExpectedAt?->format(\DATE_ATOM),
+            'last_ping_at' => $monitor->lastPingAt?->format(\DATE_ATOM),
+            'created_at' => $monitor->createdAt->format(\DATE_ATOM),
+            'ping_url' => $monitor->pingUrl,
+            'badge_url' => $monitor->badgeUrl,
+            'snoozed_until' => $monitor->snoozedUntil?->format(\DATE_ATOM),
+        ];
     }
 
     /**

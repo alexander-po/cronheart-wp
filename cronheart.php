@@ -3,7 +3,7 @@
  * Plugin Name:       Cronheart
  * Plugin URI:        https://github.com/alexander-po/cronheart-wp
  * Description:       Monitors WP-Cron with cronheart.com. Detects when scheduled events stop firing — heartbeat for the whole site plus per-event start/success/fail pings.
- * Version:           0.2.1
+ * Version:           0.3.0
  * Requires at least: 6.0
  * Requires PHP:      8.2
  * Author:            Aliaksandr Palazok
@@ -18,6 +18,14 @@
 declare(strict_types=1);
 
 defined( 'ABSPATH' ) || exit;
+
+/*
+ * Plugin version and main-file path, used to enqueue and cache-bust the
+ * admin assets. CRONHEART_VERSION must match the `Version:` header above;
+ * the release checklist bumps both in the same edit.
+ */
+define( 'CRONHEART_VERSION', '0.3.0' );
+define( 'CRONHEART_PLUGIN_FILE', __FILE__ );
 
 /*
  * The plugin's runtime code lives under `src/` and is loaded through

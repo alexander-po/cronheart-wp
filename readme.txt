@@ -4,7 +4,7 @@ Tags: cron, wp-cron, monitoring, healthcheck, deadman-switch
 Requires at least: 6.0
 Tested up to: 7.0
 Requires PHP: 8.2
-Stable tag: 0.2.1
+Stable tag: 0.3.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -23,6 +23,7 @@ Cronheart turns WP-Cron into a **dead-man switch**: the plugin pings [cronheart.
 * **PHP fatal-error capture.** When a scheduled callback fatals or throws, the fail-ping body includes the `error_get_last()` summary — the cronheart dashboard shows the cause without you tailing `debug.log`.
 * **Settings page.** A read-only "Monitored events" table at Settings → Cronheart shows every hook the plugin is watching and where its UUID came from (constant, option, filter).
 * **Monitor picker.** Save a cronheart.com API token and the site heartbeat field becomes a dropdown of your account's monitors instead of a hand-typed UUID. Entirely optional — without a token you paste the UUID as before, and any API hiccup falls back to that field. The token is write-only and never leaves wp-admin.
+* **Account overview and monitor management.** With a token configured, Settings → Cronheart shows your plan and monitor budget, and a "Your monitors" table listing each monitor with its status and any active snooze. From that table you can pause, resume, snooze (1 hour, 4 hours, 1 day, or 1 week), or unsnooze a monitor; the change applies on cronheart.com immediately. Every action is an authenticated administrator request — nothing happens without your click.
 * **Configuration through `wp-config.php` constants** for production (`CRONHEART_HEARTBEAT_UUID`, `CRONHEART_EVENT_<HOOK>_UUID`), with admin-UI fallback for sites where editing `wp-config.php` is not practical.
 
 = Never breaks WP-Cron =
@@ -31,7 +32,7 @@ The plugin's hard contract: a broken cronheart backend, an unreachable network, 
 
 = External services =
 
-This plugin sends HTTP requests to [cronheart.com](https://cronheart.com) in two distinct situations. Both are opt-in: without configuration the plugin loads and does nothing — no telemetry, no usage statistics, no anonymous reports.
+This plugin sends HTTP requests to [cronheart.com](https://cronheart.com) in two distinct situations: the monitoring pings your scheduled jobs send, and the account-management calls the admin settings page makes. Both are opt-in: without configuration the plugin loads and does nothing — no telemetry, no usage statistics, no anonymous reports.
 
 **1. Monitoring pings (front end / WP-Cron).** Sent on every scheduled WP-Cron run, but **only when you supply a monitor UUID**. The exact data sent per ping:
 
@@ -39,7 +40,13 @@ This plugin sends HTTP requests to [cronheart.com](https://cronheart.com) in two
 * A short body excerpt — capped at 10 KB — containing either an exception summary (for `fail` pings) or nothing (for `start` / `success` / `heartbeat`).
 * The plugin / SDK version in a `User-Agent` header.
 
-**2. Monitor listing (wp-admin only).** When — and only when — you save a cronheart.com API token, the **Settings → Cronheart** page calls `https://cronheart.com/api/v1/monitors` to fetch your monitor list for the heartbeat picker. The request carries the token as an `Authorization: Bearer` header and runs **only while a logged-in administrator is viewing that settings page** — never on the front end, during WP-Cron, or in any other context. No token, no request. The token is optional; without it you simply paste a monitor UUID by hand and this call is never made.
+**2. Account management (wp-admin only).** When — and only when — you save a cronheart.com API token, the **Settings → Cronheart** page talks to the cronheart.com management API at `https://cronheart.com/api/v1/...`. Every such request carries the token as an `Authorization: Bearer` header and runs **only while a logged-in administrator is on that settings page** — and, for the write actions below, only when that administrator clicks the button. Never on the front end, during WP-Cron, or in any other context. No token, no request. The calls are:
+
+* **Read your monitors** — `GET /api/v1/monitors` — to populate the heartbeat picker and the "Your monitors" table. Sends nothing beyond the token.
+* **Read your account** — `GET /api/v1/account` — to show your plan, monitor budget, and API rate-limit standing. Sends nothing beyond the token.
+* **Lifecycle actions** — `POST /api/v1/monitors/<uuid>/pause` (or `/resume`, `/snooze`, `/unsnooze`) — sent when you click a pause / resume / snooze / unsnooze button. Sends the monitor's UUID (in the path) and the action; snooze also sends the chosen duration (1 hour, 4 hours, 1 day, or 1 week). These are the only requests that change anything on cronheart.com, and each is one deliberate button click.
+
+The token is optional. Without it the plugin makes none of these management calls — you paste a monitor UUID by hand and only the monitoring pings above are ever sent.
 
 [Cronheart.com Terms of Service](https://cronheart.com/terms) · [Privacy policy](https://cronheart.com/privacy)
 
@@ -105,11 +112,17 @@ Open an issue on [GitHub](https://github.com/alexander-po/cronheart-wp/issues).
 
 == Screenshots ==
 
-1. The Cronheart settings page in WP admin: the cronheart.com connection section, the site-heartbeat monitor picker, and the read-only monitored-events table.
-2. The cronheart.com dashboard listing the configured monitors and their last-ping timestamps.
-3. A monitor detail view on cronheart.com after the plugin has reported a heartbeat and a successful per-event run.
+1. The Cronheart settings page in WP admin: the cronheart.com connection section with the account plan and monitor-budget card, and the site-heartbeat monitor picker.
+2. The "Your monitors" table on the settings page — each monitor's status and any active snooze, with pause, resume, snooze, and unsnooze actions applied straight to cronheart.com.
 
 == Changelog ==
+
+= 0.3.0 =
+* **Account overview.** With a cronheart.com API token configured, Settings → Cronheart now shows your plan, monitor budget (used / limit / remaining), and API rate-limit standing, with an upgrade nudge when you are near your monitor limit.
+* **Monitor management from wp-admin.** A new "Your monitors" table lists each monitor with its status and any active snooze, and lets you pause, resume, snooze (1 hour / 4 hours / 1 day / 1 week), or unsnooze it — applied on cronheart.com immediately. This is the plugin's first admin-AJAX surface: every action is nonce-checked, capability-gated (manage_options), validated at the boundary, and degrades to a readable message rather than a fatal if the API call fails. No public (nopriv) endpoint is registered.
+* **Monitor status in the picker.** The heartbeat dropdown now shows each monitor's status alongside its name.
+* Upgraded the bundled `cron-monitor/php-sdk` to `^1.1`, which adds the account and monitor-lifecycle endpoints these features use.
+* The "External services" disclosure has been rewritten to cover the new read (`GET /api/v1/account`) and write (`POST /api/v1/monitors/<uuid>/{pause,resume,snooze,unsnooze}`) calls; all remain wp-admin-only, token-gated, and triggered by an administrator's explicit action.
 
 = 0.2.1 =
 * Documentation and screenshots for the monitor picker. No functional change from 0.2.0 — the plugin code is identical; this release refreshes the readme ("What it does", external-services disclosure, FAQ) and adds an updated settings-page screenshot showing the picker.
@@ -172,6 +185,9 @@ Open an issue on [GitHub](https://github.com/alexander-po/cronheart-wp/issues).
 * PHP fatal-error capture for the fail-ping body.
 
 == Upgrade Notice ==
+
+= 0.3.0 =
+Adds an account/plan card and a "Your monitors" table to pause, resume, snooze, or unsnooze monitors from wp-admin — the plugin's first admin-AJAX endpoint, nonce- and capability-gated. No token required; the runtime ping path is unchanged. Safe to upgrade.
 
 = 0.2.1 =
 Documentation + screenshot refresh for the 0.2.0 monitor picker. No code change. Safe to upgrade.

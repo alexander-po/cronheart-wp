@@ -4,14 +4,15 @@ declare(strict_types=1);
 
 namespace Cronheart\WP;
 
+use Cronheart\WP\Admin\Ajax;
 use Cronheart\WP\Admin\EventList;
 use Cronheart\WP\Admin\SettingsPage;
 use Cronheart\WP\Api\Client;
+use Cronheart\WP\Api\ManagementClient;
 use Cronheart\WP\Config\Resolver;
 use Cronheart\WP\Hooks\HeartbeatHandler;
 use Cronheart\WP\Hooks\HeartbeatScheduler;
 use Cronheart\WP\Hooks\PerEventInstrumentation;
-use CronMonitor\Api\MonitorApiClient;
 use CronMonitor\Client\Configuration;
 
 // Direct-access guard. WP.org's Plugin Check flags every PHP file
@@ -45,17 +46,6 @@ use CronMonitor\Client\Configuration;
  */
 final class Plugin
 {
-    /**
-     * Upper bound on monitors materialised for the admin heartbeat
-     * picker. The dropdown lists at most this many; an account with more
-     * monitors than the cap will not see every one of them in the list.
-     * A heartbeat UUID already saved — whether or not it appears in the
-     * listed subset — stays selectable, so the cap never silently drops a
-     * saved selection. The picker is an ergonomic shortcut, not an
-     * exhaustive browser.
-     */
-    private const MONITOR_PICKER_LIMIT = 200;
-
     public function boot(): void
     {
         $resolver = self::buildResolver();
@@ -82,48 +72,47 @@ final class Plugin
             $perEvent->register($resolver->eventHookNames());
         }, \PHP_INT_MAX);
 
-        // Admin Settings → Cronheart. Registering the menu and
-        // settings hooks outside an admin request is harmless — the
-        // hooks only fire on admin page loads — so we skip the
-        // `is_admin()` guard.
-        (new SettingsPage(new EventList($resolver), $resolver, self::buildMonitorLister($resolver)))->register();
+        // Admin Settings → Cronheart, plus the monitor-lifecycle AJAX
+        // surface. Registering these outside an admin request is harmless —
+        // the menu/settings hooks only fire on admin page loads, and the
+        // `wp_ajax_*` action only fires for an authenticated admin-ajax
+        // request — so we skip the `is_admin()` guard. Both share one
+        // management-client factory; the AJAX layer is admin-only by
+        // construction (no `nopriv` companion).
+        $managementClientFactory = self::buildManagementClientFactory($resolver);
+        $pluginFile = \defined('CRONHEART_PLUGIN_FILE') ? (string) \constant('CRONHEART_PLUGIN_FILE') : '';
+
+        (new SettingsPage(new EventList($resolver), $resolver, $managementClientFactory, $pluginFile))->register();
+        (new Ajax($resolver, $managementClientFactory))->register();
     }
 
     /**
-     * Build the closure the settings page calls to list the operator's
-     * monitors for the heartbeat picker. It is invoked lazily, only on the
-     * Settings → Cronheart page render and only when an API token is
-     * configured — never on the front end, in WP-Cron, or during the
-     * runtime ping path. That single call site is what keeps the plugin's
-     * "External services" disclosure accurate: the account token leaves
-     * the site only from wp-admin.
+     * Build the factory the settings page calls to obtain a
+     * {@see ManagementClient} for the account token. It is invoked lazily,
+     * only on the Settings → Cronheart page render and only when an API
+     * token is configured — never on the front end, in WP-Cron, or during
+     * the runtime ping path. That single construction site is what keeps
+     * the plugin's "External services" disclosure accurate: the
+     * write-capable account token leaves the site only from wp-admin.
      *
-     * The closure deliberately does NOT catch exceptions — the settings
-     * page owns the graceful-degradation ladder (auth / plan / rate-limit /
-     * transport) so it can map each failure to the right admin notice and
-     * fall back to the manual UUID field. It throws if the endpoint is
-     * misconfigured, which the page treats as a generic "could not reach"
-     * fallback.
+     * The factory throws a {@see \RuntimeException} if the endpoint is
+     * misconfigured (the settings page treats that as a generic "could not
+     * reach" fallback); the {@see ManagementClient} it returns lets the
+     * SDK's typed {@see \CronMonitor\Api\Exception\ApiException} subclasses
+     * propagate so the admin layer can map each failure to the right
+     * notice and fall back to the manual UUID field.
      *
-     * @return \Closure(string): list<\CronMonitor\Api\Dto\Monitor>
+     * @return \Closure(string): ManagementClient
      */
-    private static function buildMonitorLister(Resolver $resolver): \Closure
+    private static function buildManagementClientFactory(Resolver $resolver): \Closure
     {
-        return static function (string $token) use ($resolver): array {
+        return static function (string $token) use ($resolver): ManagementClient {
             $configuration = self::buildApiConfiguration($resolver, $token);
             if (null === $configuration) {
                 throw new \RuntimeException('The Cronheart API endpoint is misconfigured.');
             }
 
-            $monitors = [];
-            foreach (MonitorApiClient::create($configuration)->allMonitors() as $monitor) {
-                $monitors[] = $monitor;
-                if (\count($monitors) >= self::MONITOR_PICKER_LIMIT) {
-                    break;
-                }
-            }
-
-            return $monitors;
+            return new ManagementClient($configuration);
         };
     }
 

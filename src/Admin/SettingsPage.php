@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace Cronheart\WP\Admin;
 
+use Cronheart\WP\Api\ManagementClient;
 use Cronheart\WP\Config\Resolver;
+use CronMonitor\Api\Dto\Account;
 use CronMonitor\Api\Dto\Monitor;
+use CronMonitor\Api\Dto\MonitorBudget;
 use CronMonitor\Api\Exception\AuthenticationException;
 use CronMonitor\Api\Exception\PlanRestrictionException;
 use CronMonitor\Api\Exception\RateLimitException;
@@ -59,9 +62,9 @@ final class SettingsPage
     public const API_TOKEN_CLEAR_FIELD = 'cronheart_api_token_clear';
 
     /**
-     * Guards the lazy {@see maybeFetchMonitors()} call so the lister
-     * closure runs at most once per request, regardless of how many of the
-     * field renderers ask for the result.
+     * Guards the lazy {@see maybeFetchMonitors()} call so the management
+     * client is built and queried at most once per request, regardless of
+     * how many of the field renderers ask for the result.
      */
     private bool $apiFetchAttempted = false;
 
@@ -90,45 +93,125 @@ final class SettingsPage
     private ?string $apiUpgradeUrl = null;
 
     /**
-     * @param \Closure(string): list<Monitor> $monitorLister lists the
-     *                                                       account's
-     *                                                       monitors for
-     *                                                       the picker;
-     *                                                       throws on any
-     *                                                       API failure.
-     *                                                       Null disables
-     *                                                       the picker
-     *                                                       (manual UUID
-     *                                                       entry only)
+     * The management client for this request, built at most once from the
+     * factory and reused across the monitor listing and the account fetch.
+     * Null once {@see $managementClientResolved} is set if no factory or
+     * token is configured.
+     */
+    private ?ManagementClient $managementClient = null;
+
+    /**
+     * Guards the management-client build so the factory runs at most once
+     * per request, whether it returns a client, returns null, or throws.
+     */
+    private bool $managementClientResolved = false;
+
+    /**
+     * Guards {@see maybeFetchAccount()} so the account snapshot is fetched
+     * at most once per request.
+     */
+    private bool $accountFetchAttempted = false;
+
+    /**
+     * The account snapshot for the connection card, or null when not yet
+     * fetched or the account call failed (the connection notice, driven by
+     * the monitor listing, explains any failure; the card stays hidden).
+     */
+    private ?Account $account = null;
+
+    /**
+     * The hook suffix {@see add_options_page()} returns for the Cronheart
+     * screen. Asset enqueuing is gated on it so the admin script and style
+     * load on that screen only, never site-wide. Null until the menu is
+     * registered (or if registration failed).
+     */
+    private ?string $hookSuffix = null;
+
+    /**
+     * @param \Closure(string): ManagementClient $managementClientFactory builds the
+     *                                                                    admin-only
+     *                                                                    management
+     *                                                                    client for a
+     *                                                                    token; throws
+     *                                                                    only on a
+     *                                                                    misconfigured
+     *                                                                    endpoint. Its
+     *                                                                    calls throw the
+     *                                                                    SDK's typed
+     *                                                                    exceptions. Null
+     *                                                                    disables the
+     *                                                                    picker (manual
+     *                                                                    UUID entry only)
      */
     public function __construct(
         private readonly EventList $eventList,
         private readonly Resolver $resolver,
-        private readonly ?\Closure $monitorLister = null,
+        private readonly ?\Closure $managementClientFactory = null,
+        private readonly string $pluginFile = '',
     ) {
     }
 
     /**
-     * Hook the admin-menu and admin-init callbacks. Safe to call
-     * outside of an admin request — both hooks only fire in admin
-     * context anyway, so the cost of registration is one closure
-     * each.
+     * Hook the admin-menu, admin-init, and asset-enqueue callbacks. Safe to
+     * call outside of an admin request — the hooks only fire in admin
+     * context anyway, so the cost of registration is one closure each.
      */
     public function register(): void
     {
         add_action('admin_menu', [$this, 'add_menu']);
         add_action('admin_init', [$this, 'register_settings']);
+        add_action('admin_enqueue_scripts', [$this, 'enqueue_assets']);
     }
 
     public function add_menu(): void
     {
-        add_options_page(
+        $hookSuffix = add_options_page(
             __('Cronheart', 'cronheart'),
             __('Cronheart', 'cronheart'),
             'manage_options',
             self::MENU_SLUG,
             [$this, 'render']
         );
+
+        $this->hookSuffix = \is_string($hookSuffix) ? $hookSuffix : null;
+    }
+
+    /**
+     * Enqueue the admin script + style, and localise the AJAX endpoint,
+     * nonce, and translated strings — on the Cronheart screen only. Gated on
+     * the hook suffix {@see add_menu()} captured from {@see add_options_page()},
+     * never a hard-coded page string, so the assets never load site-wide.
+     */
+    public function enqueue_assets(string $hook_suffix): void
+    {
+        if (null === $this->hookSuffix || $hook_suffix !== $this->hookSuffix || '' === $this->pluginFile) {
+            return;
+        }
+
+        $version = \defined('CRONHEART_VERSION') ? (string) \constant('CRONHEART_VERSION') : false;
+
+        wp_enqueue_style(
+            'cronheart-admin',
+            plugins_url('assets/admin.css', $this->pluginFile),
+            [],
+            $version
+        );
+        wp_enqueue_script(
+            'cronheart-admin',
+            plugins_url('assets/admin.js', $this->pluginFile),
+            [],
+            $version,
+            true
+        );
+        wp_localize_script('cronheart-admin', 'cronheartAdmin', [
+            'ajaxUrl' => admin_url('admin-ajax.php'),
+            'action' => Ajax::ACTION,
+            'nonce' => wp_create_nonce(Ajax::ACTION),
+            'i18n' => [
+                'working' => __('Working…', 'cronheart'),
+                'error' => __('Something went wrong. Please try again.', 'cronheart'),
+            ],
+        ]);
     }
 
     public function register_settings(): void
@@ -201,6 +284,7 @@ final class SettingsPage
         submit_button();
         echo '</form>';
 
+        $this->render_monitor_management();
         $this->render_event_table();
 
         echo '</div>';
@@ -266,27 +350,98 @@ final class SettingsPage
                     'Connected to cronheart.com, but this account has no monitors yet. Create one at cronheart.com, then reload this page to pick it below.',
                     'cronheart'
                 ).'</p></div>';
-
-                return;
+            } else {
+                echo '<div class="notice notice-success inline"><p>'.esc_html(\sprintf(
+                    /* translators: %d: number of monitors found on the connected cronheart.com account. */
+                    _n(
+                        'Connected — %d monitor available in the picker below.',
+                        'Connected — %d monitors available in the picker below.',
+                        $count,
+                        'cronheart'
+                    ),
+                    $count
+                )).'</p></div>';
             }
 
-            echo '<div class="notice notice-success inline"><p>'.esc_html(\sprintf(
-                /* translators: %d: number of monitors found on the connected cronheart.com account. */
-                _n(
-                    'Connected — %d monitor available in the picker below.',
-                    'Connected — %d monitors available in the picker below.',
-                    $count,
-                    'cronheart'
-                ),
-                $count
-            )).'</p></div>';
+            $this->render_account_card();
         }
     }
 
     /**
+     * Render the account plan / budget / rate-limit card under the
+     * connection notice. Silent when the account snapshot is unavailable
+     * (no client, or the account call failed — the connection notice
+     * already explains the failure). Shows an upgrade nudge once the
+     * monitor budget is nearly exhausted.
+     */
+    private function render_account_card(): void
+    {
+        $account = $this->maybeFetchAccount();
+        if (null === $account) {
+            return;
+        }
+
+        $budget = $account->monitorBudget;
+        $rate = $account->apiRateLimit;
+
+        echo '<div class="cronheart-account-card">';
+        echo '<p><strong>'.esc_html__('Account', 'cronheart').'</strong></p>';
+        echo '<ul>';
+        printf(
+            '<li>%s</li>',
+            esc_html(\sprintf(
+                /* translators: %s: the cronheart.com plan name (for example, Starter). */
+                __('Plan: %s', 'cronheart'),
+                $account->plan->label
+            ))
+        );
+        printf(
+            '<li>%s</li>',
+            esc_html(\sprintf(
+                /* translators: 1: monitors in use; 2: monitor limit; 3: monitors remaining. */
+                __('Monitors: %1$d of %2$d used (%3$d remaining)', 'cronheart'),
+                $budget->used,
+                $budget->limit,
+                $budget->remaining
+            ))
+        );
+        printf(
+            '<li>%s</li>',
+            esc_html(\sprintf(
+                /* translators: 1: API requests remaining; 2: API rate-limit ceiling. */
+                __('API rate limit: %1$d of %2$d requests remaining', 'cronheart'),
+                $rate->remaining,
+                $rate->limit
+            ))
+        );
+        echo '</ul>';
+
+        if (self::monitorBudgetNearlyExhausted($budget)) {
+            printf(
+                '<p>%1$s <a href="%2$s" target="_blank" rel="noopener noreferrer">%3$s</a></p>',
+                esc_html__('You are close to your monitor limit.', 'cronheart'),
+                esc_url('https://cronheart.com'),
+                esc_html__('Upgrade your plan for more monitors', 'cronheart')
+            );
+        }
+
+        echo '</div>';
+    }
+
+    /**
+     * Whether the account has used at least 80% of its monitor budget — the
+     * trigger for the upgrade nudge. Integer-only so there is no float
+     * rounding at the boundary; a zero (or unknown) limit never trips it.
+     */
+    private static function monitorBudgetNearlyExhausted(MonitorBudget $budget): bool
+    {
+        return $budget->limit > 0 && $budget->used * 5 >= $budget->limit * 4;
+    }
+
+    /**
      * Lazily list the account's monitors for the heartbeat picker, at most
-     * once per request. Only runs when both a token and a lister closure
-     * are present. Every failure mode is caught and mapped to a translated
+     * once per request. Only runs when both a token and a management-client
+     * factory are present. Every failure mode is caught and mapped to a translated
      * {@see $apiError} message (never the token value) so the caller can
      * fall back to the manual UUID field — this method never lets an
      * exception escape into the admin page render.
@@ -298,17 +453,12 @@ final class SettingsPage
         }
         $this->apiFetchAttempted = true;
 
-        if (null === $this->monitorLister) {
-            return;
-        }
-
-        $token = $this->resolver->apiToken();
-        if (null === $token) {
-            return;
-        }
-
         try {
-            $this->apiMonitors = array_values(($this->monitorLister)($token));
+            $client = $this->managementClient();
+            if (null === $client) {
+                return;
+            }
+            $this->apiMonitors = array_values($client->listMonitors());
         } catch (PlanRestrictionException $e) {
             $this->apiUpgradeUrl = $e->upgradeUrl;
             $this->apiError = __('Your cronheart.com plan does not include API access. Upgrade to Starter or higher to pick monitors from a list — you can still paste a monitor UUID below.', 'cronheart');
@@ -319,6 +469,61 @@ final class SettingsPage
         } catch (\Throwable) {
             $this->apiError = __('Could not reach cronheart.com to load your monitors. You can paste a monitor UUID manually below.', 'cronheart');
         }
+    }
+
+    /**
+     * Build the management client once per request, or return null when no
+     * factory or token is configured (the picker and account card stay
+     * hidden and the manual UUID field is used). The factory throws only on
+     * a misconfigured endpoint; callers invoke this inside their own try so
+     * that failure maps to the same fallback as any other API error. The
+     * built client is reused across the monitor listing and the account
+     * fetch, so wp-admin builds at most one client per render.
+     */
+    private function managementClient(): ?ManagementClient
+    {
+        if ($this->managementClientResolved) {
+            return $this->managementClient;
+        }
+        $this->managementClientResolved = true;
+
+        if (null === $this->managementClientFactory) {
+            return null;
+        }
+
+        $token = $this->resolver->apiToken();
+        if (null === $token) {
+            return null;
+        }
+
+        $this->managementClient = ($this->managementClientFactory)($token);
+
+        return $this->managementClient;
+    }
+
+    /**
+     * Fetch the account snapshot once per request for the connection card,
+     * reusing the client built for the monitor listing. Only the connection
+     * notice (driven by the monitor listing) reports failures to the
+     * operator; if the account call fails on its own the card simply does
+     * not render, so this swallows its errors and returns null. Never lets
+     * an exception escape into the admin page render.
+     */
+    private function maybeFetchAccount(): ?Account
+    {
+        if ($this->accountFetchAttempted) {
+            return $this->account;
+        }
+        $this->accountFetchAttempted = true;
+
+        try {
+            $client = $this->managementClient();
+            $this->account = null === $client ? null : $client->account();
+        } catch (\Throwable) {
+            $this->account = null;
+        }
+
+        return $this->account;
     }
 
     /**
@@ -416,7 +621,7 @@ final class SettingsPage
                 '<option value="%1$s"%2$s>%3$s</option>',
                 esc_attr($monitor->uuid),
                 selected($value, $monitor->uuid, false),
-                esc_html($monitor->name.' — '.$monitor->uuid)
+                esc_html($monitor->name.' — '.Ajax::statusLabel($monitor->status).' — '.$monitor->uuid)
             );
         }
 
@@ -535,6 +740,86 @@ final class SettingsPage
         );
 
         return $stored;
+    }
+
+    /**
+     * Render the "Your monitors" table — the account's monitors with their
+     * status, snooze deadline, and lifecycle action buttons (pause / resume
+     * / snooze / unsnooze). Reuses the listing already fetched for the
+     * picker, so it adds no extra API call; renders nothing when there is no
+     * connected listing. The buttons are wired by `assets/admin.js` to the
+     * authenticated AJAX endpoint; with JavaScript disabled the table is a
+     * read-only status view.
+     */
+    private function render_monitor_management(): void
+    {
+        if (!\is_array($this->apiMonitors) || [] === $this->apiMonitors) {
+            return;
+        }
+
+        echo '<h2>'.esc_html__('Your monitors', 'cronheart').'</h2>';
+        echo '<p class="description">'.esc_html__(
+            'Pause, snooze, or resume any monitor on this account. Changes apply immediately on cronheart.com.',
+            'cronheart'
+        ).'</p>';
+
+        echo '<table class="widefat striped cronheart-monitors">';
+        echo '<thead><tr>';
+        echo '<th>'.esc_html__('Monitor', 'cronheart').'</th>';
+        echo '<th>'.esc_html__('Status', 'cronheart').'</th>';
+        echo '<th>'.esc_html__('Snoozed until', 'cronheart').'</th>';
+        echo '<th>'.esc_html__('Actions', 'cronheart').'</th>';
+        echo '</tr></thead><tbody>';
+
+        foreach ($this->apiMonitors as $monitor) {
+            $this->render_monitor_row($monitor);
+        }
+
+        echo '</tbody></table>';
+    }
+
+    private function render_monitor_row(Monitor $monitor): void
+    {
+        $snoozeLabel = Ajax::snoozeUntilLabel($monitor->snoozedUntil);
+
+        printf(
+            '<tr data-cronheart-uuid="%1$s" data-cronheart-status="%2$s" data-cronheart-snoozed="%3$s">',
+            esc_attr($monitor->uuid),
+            esc_attr($monitor->status->value),
+            esc_attr(null === $monitor->snoozedUntil ? '0' : '1')
+        );
+
+        printf('<td><code>%s</code></td>', esc_html($monitor->name));
+        printf('<td class="cronheart-monitor-status">%s</td>', esc_html(Ajax::statusLabel($monitor->status)));
+        printf('<td class="cronheart-monitor-snooze">%s</td>', esc_html('' === $snoozeLabel ? '—' : $snoozeLabel));
+
+        echo '<td>';
+        printf(
+            '<button type="button" class="button cronheart-action" data-cronheart-op="pause">%s</button>',
+            esc_html__('Pause', 'cronheart')
+        );
+        printf(
+            '<button type="button" class="button cronheart-action" data-cronheart-op="resume">%s</button>',
+            esc_html__('Resume', 'cronheart')
+        );
+        echo '<select class="cronheart-snooze-duration" aria-label="'.esc_attr__('Snooze duration', 'cronheart').'">';
+        printf('<option value="1h">%s</option>', esc_html__('1 hour', 'cronheart'));
+        printf('<option value="4h">%s</option>', esc_html__('4 hours', 'cronheart'));
+        printf('<option value="1d">%s</option>', esc_html__('1 day', 'cronheart'));
+        printf('<option value="1w">%s</option>', esc_html__('1 week', 'cronheart'));
+        echo '</select>';
+        printf(
+            '<button type="button" class="button cronheart-action" data-cronheart-op="snooze">%s</button>',
+            esc_html__('Snooze', 'cronheart')
+        );
+        printf(
+            '<button type="button" class="button cronheart-action" data-cronheart-op="unsnooze">%s</button>',
+            esc_html__('Unsnooze', 'cronheart')
+        );
+        echo '<span class="cronheart-action-feedback" role="status" aria-live="polite"></span>';
+        echo '</td>';
+
+        echo '</tr>';
     }
 
     private function render_event_table(): void
