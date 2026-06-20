@@ -177,6 +177,21 @@ final class Resolver
     }
 
     /**
+     * Whether a hook's UUID is sourced from a `CRONHEART_EVENT_<HOOK>_UUID`
+     * wp-config.php constant. The constant outranks both the option and the
+     * filter ({@see eventUuid()} precedence), so the admin UI renders such a
+     * hook read-only and the AJAX write path refuses to touch its option
+     * entry — mirroring how {@see apiTokenIsConstant()} guards the API token.
+     * Read-only, like the rest of this resolver: it never writes.
+     */
+    public function eventUuidIsConstant(string $hookName): bool
+    {
+        return \is_string(($this->constantReader)(self::EVENT_CONSTANT_PREFIX
+            .self::normaliseHookForConstant($hookName)
+            .self::EVENT_CONSTANT_SUFFIX));
+    }
+
+    /**
      * Resolves the cron-monitor endpoint URL. Returns null to mean
      * "the SDK's built-in default" (the SaaS at cronheart.com); a
      * concrete URL overrides the default for staging / private /

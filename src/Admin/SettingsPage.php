@@ -203,15 +203,7 @@ final class SettingsPage
             $version,
             true
         );
-        wp_localize_script('cronheart-admin', 'cronheartAdmin', [
-            'ajaxUrl' => admin_url('admin-ajax.php'),
-            'action' => Ajax::ACTION,
-            'nonce' => wp_create_nonce(Ajax::ACTION),
-            'i18n' => [
-                'working' => __('Working…', 'cronheart'),
-                'error' => __('Something went wrong. Please try again.', 'cronheart'),
-            ],
-        ]);
+        wp_localize_script('cronheart-admin', 'cronheartAdmin', Ajax::scriptData());
     }
 
     public function register_settings(): void
@@ -827,6 +819,13 @@ final class SettingsPage
         $entries = $this->eventList->entries();
 
         echo '<h2>'.esc_html__('Monitored events', 'cronheart').'</h2>';
+
+        printf(
+            '<p class="description">%1$s <a href="%2$s">%3$s</a></p>',
+            esc_html__('A read-only view of what each registered hook resolves to. To assign monitors to your cron events — or create them automatically — use the', 'cronheart'),
+            esc_url(admin_url('options-general.php?page='.CronEventsScreen::MENU_SLUG)),
+            esc_html__('Cronheart Events screen.', 'cronheart')
+        );
 
         if ([] === $entries) {
             echo '<p>'.esc_html__(

@@ -10,6 +10,7 @@ use Brain\Monkey\Functions;
 use Cronheart\WP\Admin\Ajax;
 use Cronheart\WP\Api\ManagementClient;
 use Cronheart\WP\Config\Resolver;
+use Cronheart\WP\Cron\EventDiscovery;
 use Cronheart\WP\Tests\Support\FakeHttpClient;
 use Cronheart\WP\Tests\Support\WpJsonResponse;
 use CronMonitor\Api\MonitorApiClient;
@@ -37,6 +38,7 @@ final class AjaxTest extends TestCase
         Functions\when('wp_send_json_error')->alias(
             static fn ($data = null, $code = null) => throw new WpJsonResponse(false, $data, $code)
         );
+        Functions\when('site_url')->justReturn('https://example.test');
     }
 
     protected function tearDown(): void
@@ -45,14 +47,18 @@ final class AjaxTest extends TestCase
         Monkey\tearDown();
     }
 
-    public function test_register_adds_the_authenticated_action_and_never_nopriv(): void
+    public function test_register_adds_the_authenticated_actions_and_never_nopriv(): void
     {
         Actions\expectAdded('wp_ajax_'.Ajax::ACTION)->once();
+        Actions\expectAdded('wp_ajax_'.Ajax::ACTION_MAP_EVENT)->once();
+        Actions\expectAdded('wp_ajax_'.Ajax::ACTION_CREATE_EVENT)->once();
         Actions\expectAdded('wp_ajax_nopriv_'.Ajax::ACTION)->never();
+        Actions\expectAdded('wp_ajax_nopriv_'.Ajax::ACTION_MAP_EVENT)->never();
+        Actions\expectAdded('wp_ajax_nopriv_'.Ajax::ACTION_CREATE_EVENT)->never();
 
         (new Ajax($this->resolverWithToken(), $this->throwingFactory()))->register();
 
-        $this->addToAssertionCount(2);
+        $this->addToAssertionCount(6);
     }
 
     public function test_rejects_a_stale_nonce_without_touching_the_api(): void
@@ -169,10 +175,259 @@ final class AjaxTest extends TestCase
         self::assertArrayHasKey('message', $response->data);
     }
 
+    public function test_map_event_assigns_a_monitor_and_writes_the_event_map(): void
+    {
+        $this->authorised();
+        $_POST = ['hook' => 'wp_version_check', 'uuid' => self::UUID];
+        $saved = null;
+        Functions\when('get_option')->alias(static fn ($opt, $def = false) => Resolver::EVENT_MAP_OPTION === $opt ? [] : $def);
+        Functions\when('update_option')->alias(static function ($opt, $val) use (&$saved) {
+            $saved = [$opt, $val];
+
+            return true;
+        });
+
+        $response = $this->captureCall(static fn (Ajax $ajax) => $ajax->handleMapEvent(), $this->resolverWithToken());
+
+        self::assertTrue($response->success);
+        self::assertNotNull($saved, 'update_option was called');
+        self::assertSame(['wp_version_check' => self::UUID], $saved[1]);
+        self::assertSame(Resolver::EVENT_MAP_OPTION, $saved[0]);
+        self::assertIsArray($response->data);
+        self::assertTrue($response->data['mapped']);
+    }
+
+    public function test_map_event_preserves_other_hooks_in_the_map(): void
+    {
+        $this->authorised();
+        $_POST = ['hook' => 'wp_version_check', 'uuid' => self::UUID];
+        $saved = null;
+        Functions\when('get_option')->alias(static fn ($opt, $def = false) => Resolver::EVENT_MAP_OPTION === $opt
+            ? ['feed_refresh' => 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb']
+            : $def);
+        Functions\when('update_option')->alias(static function ($opt, $val) use (&$saved) {
+            $saved = [$opt, $val];
+
+            return true;
+        });
+
+        $response = $this->captureCall(static fn (Ajax $ajax) => $ajax->handleMapEvent(), $this->resolverWithToken());
+
+        self::assertTrue($response->success);
+        self::assertNotNull($saved, 'update_option was called');
+        self::assertSame(
+            [
+                'feed_refresh' => 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+                'wp_version_check' => self::UUID,
+            ],
+            $saved[1],
+            'a read-modify-write merge keeps every other hook entry'
+        );
+    }
+
+    public function test_map_event_recovers_from_a_non_array_stored_option(): void
+    {
+        $this->authorised();
+        $_POST = ['hook' => 'wp_version_check', 'uuid' => self::UUID];
+        $saved = null;
+        Functions\when('get_option')->alias(static fn ($opt, $def = false) => Resolver::EVENT_MAP_OPTION === $opt ? 'corrupt-not-an-array' : $def);
+        Functions\when('update_option')->alias(static function ($opt, $val) use (&$saved) {
+            $saved = [$opt, $val];
+
+            return true;
+        });
+
+        $response = $this->captureCall(static fn (Ajax $ajax) => $ajax->handleMapEvent(), $this->resolverWithToken());
+
+        self::assertTrue($response->success);
+        self::assertNotNull($saved, 'update_option was called');
+        self::assertSame(['wp_version_check' => self::UUID], $saved[1], 'a non-array stored option resets to a fresh map without fataling');
+    }
+
+    public function test_map_event_suppresses_with_an_empty_uuid(): void
+    {
+        $this->authorised();
+        $_POST = ['hook' => 'wp_version_check', 'uuid' => ''];
+        $saved = null;
+        Functions\when('get_option')->alias(static fn ($opt, $def = false) => Resolver::EVENT_MAP_OPTION === $opt ? [] : $def);
+        Functions\when('update_option')->alias(static function ($opt, $val) use (&$saved) {
+            $saved = [$opt, $val];
+
+            return true;
+        });
+
+        $response = $this->captureCall(static fn (Ajax $ajax) => $ajax->handleMapEvent(), $this->resolverWithToken());
+
+        self::assertTrue($response->success);
+        self::assertNotNull($saved, 'update_option was called');
+        self::assertSame(['wp_version_check' => ''], $saved[1], 'empty UUID stores the suppress marker');
+        self::assertFalse($response->data['mapped']);
+    }
+
+    public function test_map_event_rejects_an_unknown_hook_without_writing(): void
+    {
+        $this->authorised();
+        $_POST = ['hook' => 'not_a_real_hook', 'uuid' => self::UUID];
+        Functions\expect('update_option')->never();
+
+        $response = $this->captureCall(static fn (Ajax $ajax) => $ajax->handleMapEvent(), $this->resolverWithToken());
+
+        self::assertFalse($response->success);
+        self::assertSame(400, $response->statusCode);
+    }
+
+    public function test_map_event_rejects_a_constant_governed_hook(): void
+    {
+        $this->authorised();
+        $_POST = ['hook' => 'wp_version_check', 'uuid' => self::UUID];
+        Functions\expect('update_option')->never();
+
+        $response = $this->captureCall(static fn (Ajax $ajax) => $ajax->handleMapEvent(), $this->resolverWithConstantEvent('wp_version_check'));
+
+        self::assertFalse($response->success);
+        self::assertSame(409, $response->statusCode);
+    }
+
+    public function test_map_event_rejects_an_invalid_uuid(): void
+    {
+        $this->authorised();
+        $_POST = ['hook' => 'wp_version_check', 'uuid' => 'not-a-uuid'];
+        Functions\expect('update_option')->never();
+
+        $response = $this->captureCall(static fn (Ajax $ajax) => $ajax->handleMapEvent(), $this->resolverWithToken());
+
+        self::assertFalse($response->success);
+        self::assertSame(400, $response->statusCode);
+    }
+
+    public function test_create_event_monitor_creates_then_assigns(): void
+    {
+        $this->authorised();
+        $_POST = ['hook' => 'wp_version_check'];
+        $saved = null;
+        Functions\when('get_option')->alias(static fn ($opt, $def = false) => Resolver::EVENT_MAP_OPTION === $opt ? [] : $def);
+        Functions\when('update_option')->alias(static function ($opt, $val) use (&$saved) {
+            $saved = [$opt, $val];
+
+            return true;
+        });
+
+        $factory = $this->factoryReturning($this->monitorWire('new', null));
+        $response = $this->captureCall(static fn (Ajax $ajax) => $ajax->handleCreateEventMonitor(), $this->resolverWithToken(), $factory);
+
+        self::assertTrue($response->success);
+        self::assertSame(self::UUID, $response->data['uuid']);
+        self::assertNotNull($saved, 'update_option was called');
+        self::assertSame(['wp_version_check' => self::UUID], $saved[1], 'the created monitor is mapped to the hook');
+    }
+
+    public function test_create_event_monitor_rejects_an_already_mapped_hook(): void
+    {
+        $this->authorised();
+        $_POST = ['hook' => 'wp_version_check'];
+        Functions\expect('update_option')->never();
+
+        $response = $this->captureCall(
+            static fn (Ajax $ajax) => $ajax->handleCreateEventMonitor(),
+            $this->resolverWithMappedEvent('wp_version_check', self::UUID),
+            $this->throwingFactory(),
+        );
+
+        self::assertFalse($response->success);
+        self::assertSame(409, $response->statusCode);
+    }
+
+    public function test_create_event_monitor_rejects_a_one_off_hook(): void
+    {
+        $this->authorised();
+        $_POST = ['hook' => 'my_one_off'];
+        Functions\expect('update_option')->never();
+
+        $response = $this->captureCall(
+            static fn (Ajax $ajax) => $ajax->handleCreateEventMonitor(),
+            $this->resolverWithToken(),
+            $this->throwingFactory(),
+        );
+
+        self::assertFalse($response->success);
+        self::assertSame(400, $response->statusCode);
+    }
+
+    public function test_create_event_monitor_maps_a_conflict_to_a_json_error(): void
+    {
+        $this->authorised();
+        $_POST = ['hook' => 'wp_version_check'];
+        Functions\expect('update_option')->never();
+
+        // A 409 (same idempotency key, changed body) must surface as a JSON
+        // error, never a fatal, and must not write the map.
+        $factory = $this->factoryFailingWith(new Response(409, ['Content-Type' => 'application/problem+json'], '{"title":"Conflict","status":409}'));
+        $response = $this->captureCall(static fn (Ajax $ajax) => $ajax->handleCreateEventMonitor(), $this->resolverWithToken(), $factory);
+
+        self::assertFalse($response->success);
+        self::assertSame(409, $response->statusCode);
+    }
+
     private function authorised(): void
     {
         Functions\when('check_ajax_referer')->justReturn(1);
         Functions\when('current_user_can')->justReturn(true);
+    }
+
+    /**
+     * @param \Closure(Ajax): void $invoke
+     */
+    private function captureCall(\Closure $invoke, Resolver $resolver, ?\Closure $factory = null): WpJsonResponse
+    {
+        $ajax = new Ajax($resolver, $factory, $this->eventDiscovery());
+
+        try {
+            $invoke($ajax);
+        } catch (WpJsonResponse $response) {
+            return $response;
+        }
+
+        self::fail('the handler did not emit a JSON response');
+    }
+
+    private function eventDiscovery(): EventDiscovery
+    {
+        $cron = [
+            1_000_000_000 => [
+                'wp_version_check' => [['schedule' => 'twicedaily', 'args' => [], 'interval' => 43200]],
+                'my_one_off' => [['schedule' => false, 'args' => []]],
+            ],
+        ];
+
+        return new EventDiscovery(
+            cronArrayReader: static fn () => $cron,
+            schedulesReader: static fn (): array => [],
+            timezoneReader: static fn (): string => 'UTC',
+        );
+    }
+
+    private function resolverWithConstantEvent(string $hook): Resolver
+    {
+        $constant = Resolver::EVENT_CONSTANT_PREFIX.strtoupper(str_replace('-', '_', $hook)).Resolver::EVENT_CONSTANT_SUFFIX;
+
+        return new Resolver(
+            constantReader: static fn (string $name): ?string => $name === $constant ? self::UUID : null,
+            optionReader: static fn (string $name) => Resolver::API_TOKEN_OPTION === $name ? 'cmk_'.str_repeat('a', 43) : null,
+            filterApplier: static fn (string $name, array $value) => $value,
+        );
+    }
+
+    private function resolverWithMappedEvent(string $hook, string $uuid): Resolver
+    {
+        return new Resolver(
+            constantReader: static fn (string $name): ?string => null,
+            optionReader: static fn (string $name) => match ($name) {
+                Resolver::API_TOKEN_OPTION => 'cmk_'.str_repeat('a', 43),
+                Resolver::EVENT_MAP_OPTION => [$hook => $uuid],
+                default => null,
+            },
+            filterApplier: static fn (string $name, array $value) => $value,
+        );
     }
 
     private function capture(\Closure $factory): WpJsonResponse

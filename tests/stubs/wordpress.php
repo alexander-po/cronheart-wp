@@ -279,4 +279,43 @@ namespace {
     {
         return 'https://example.test/wp-admin/'.$path;
     }
+
+    function site_url(string $path = '', ?string $scheme = null): string
+    {
+        return 'https://example.test'.$path;
+    }
+
+    /**
+     * @return array<int|string, mixed>|false
+     */
+    function _get_cron_array()
+    {
+        return false;
+    }
+
+    /**
+     * @return array<string, array{interval: int, display: string}>
+     */
+    function wp_get_schedules(): array
+    {
+        return [];
+    }
+
+    function wp_timezone_string(): string
+    {
+        return 'UTC';
+    }
+
+    /**
+     * @param mixed $value
+     */
+    function update_option(string $option, $value, $autoload = null): bool
+    {
+        return true;
+    }
+
+    function number_format_i18n(int|float $number, int $decimals = 0): string
+    {
+        return (string) $number;
+    }
 }
