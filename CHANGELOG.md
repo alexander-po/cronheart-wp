@@ -8,6 +8,24 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 _Nothing yet — open a PR and add your entry under the appropriate subsection._
 
+## [0.4.0] — 2026-06-20
+
+Part D of the management-UI arc: a point-and-click per-event monitoring screen. Settings → Cronheart Events lists the site's recurring WP-Cron events and, per event, assigns one of the account's monitors or auto-creates an interval monitor for it — the no-code alternative to the `cronheart_monitor()` helper and `CRONHEART_EVENT_<HOOK>_UUID` constants, which still work and still take precedence. Builds on the `Api\ManagementClient` seam and the admin-AJAX layer from 0.3.0; the never-throw runtime ping path is untouched.
+
+### Added
+
+- **`Cron\EventDiscovery`** — a pure service (closures over `_get_cron_array()` / `wp_get_schedules()` / `wp_timezone_string()`, same WP-boundary pattern as `Resolver`) that discovers WP-Cron events, de-dupes by hook, fills each recurring hook's interval, and exposes a recurring-only view plus an IANA-or-UTC site timezone.
+- **`Cron\IntervalMonitorBlueprint`** — maps a discovered recurring hook to a backend-valid create request: auto-creatable only for an interval in `[30, 31,622,400]`s; `schedule_expr` the bare interval seconds; name clamped to `2..120`; grace `min(86400, max(60, interval/10))`; an idempotency key `wp-<sha256(site_url|hook)>`.
+- **`Admin\CronEventsScreen`** (Settings → Cronheart Events) — the recurring-event table with a per-hook assign dropdown and an "Auto-create & assign" button (offered only when the hook is unmapped and auto-creatable). Constant-governed hooks render read-only; the live controls are token-gated like the heartbeat picker, degrading to a read-only view without a token.
+- **Two admin-AJAX handlers** on `Admin\Ajax`: `cronheart_map_event` (assign / suppress — a read-modify-write of one `cronheart_event_map` entry, no API call, no token) and `cronheart_create_event_monitor` (auto-create via `ManagementClient::createIntervalMonitor()` then assign). Both validate the request hook against the discovered event set (never a trusted client string), keep the nonce + `manage_options` + boundary-validation contract, register no `nopriv` companion, and map a thrown SDK error — including a `409`/`422` from create — to a JSON error rather than a fatal.
+- **`Resolver::eventUuidIsConstant()`** — a read-only query so the screen and the handlers treat a `CRONHEART_EVENT_<HOOK>_UUID`-governed hook as read-only.
+
+### Changed
+
+- `assets/admin.js` now wires both admin tables (monitor lifecycle + per-event mapping), still injecting every API-returned string via `textContent`; the localized data moved to a shared `Ajax::scriptData()`.
+- Rewrote the `readme.txt` "External services" disclosure to add the create call (`POST /api/v1/monitors`, sent only on "Auto-create & assign") and the second admin screen.
+- Bumped the plugin header `Version` and `readme.txt` `Stable tag` to `0.4.0`.
+
 ## [0.3.0] — 2026-06-19
 
 Consumes the management surface added in `cron-monitor/php-sdk` 1.1.0 to turn Settings → Cronheart from a heartbeat-picker into a small monitor console: an account/plan card and a "Your monitors" table with pause / resume / snooze / unsnooze actions. This introduces the plugin's first authenticated admin-AJAX layer and the shared `Api\ManagementClient` seam. The never-throw runtime ping path (`Api\Client`) and its tokenless, least-privilege configuration are untouched — the write-capable `cmk_` token still leaves the site only from wp-admin, on an administrator's explicit action.

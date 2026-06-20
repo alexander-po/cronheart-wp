@@ -4,7 +4,7 @@ Tags: cron, wp-cron, monitoring, healthcheck, deadman-switch
 Requires at least: 6.0
 Tested up to: 7.0
 Requires PHP: 8.2
-Stable tag: 0.3.0
+Stable tag: 0.4.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -24,6 +24,7 @@ Cronheart turns WP-Cron into a **dead-man switch**: the plugin pings [cronheart.
 * **Settings page.** A read-only "Monitored events" table at Settings → Cronheart shows every hook the plugin is watching and where its UUID came from (constant, option, filter).
 * **Monitor picker.** Save a cronheart.com API token and the site heartbeat field becomes a dropdown of your account's monitors instead of a hand-typed UUID. Entirely optional — without a token you paste the UUID as before, and any API hiccup falls back to that field. The token is write-only and never leaves wp-admin.
 * **Account overview and monitor management.** With a token configured, Settings → Cronheart shows your plan and monitor budget, and a "Your monitors" table listing each monitor with its status and any active snooze. From that table you can pause, resume, snooze (1 hour, 4 hours, 1 day, or 1 week), or unsnooze a monitor; the change applies on cronheart.com immediately. Every action is an authenticated administrator request — nothing happens without your click.
+* **Per-event monitoring UI.** A new Settings → Cronheart Events screen lists the recurring WP-Cron events on your site and lets you, per event, either assign one of your monitors from a dropdown or auto-create an interval monitor for it in one click — no code required. This is the point-and-click alternative to the `cronheart_monitor()` helper and `CRONHEART_EVENT_<HOOK>_UUID` constants (both still work and take precedence).
 * **Configuration through `wp-config.php` constants** for production (`CRONHEART_HEARTBEAT_UUID`, `CRONHEART_EVENT_<HOOK>_UUID`), with admin-UI fallback for sites where editing `wp-config.php` is not practical.
 
 = Never breaks WP-Cron =
@@ -40,13 +41,14 @@ This plugin sends HTTP requests to [cronheart.com](https://cronheart.com) in two
 * A short body excerpt — capped at 10 KB — containing either an exception summary (for `fail` pings) or nothing (for `start` / `success` / `heartbeat`).
 * The plugin / SDK version in a `User-Agent` header.
 
-**2. Account management (wp-admin only).** When — and only when — you save a cronheart.com API token, the **Settings → Cronheart** page talks to the cronheart.com management API at `https://cronheart.com/api/v1/...`. Every such request carries the token as an `Authorization: Bearer` header and runs **only while a logged-in administrator is on that settings page** — and, for the write actions below, only when that administrator clicks the button. Never on the front end, during WP-Cron, or in any other context. No token, no request. The calls are:
+**2. Account management (wp-admin only).** When — and only when — you save a cronheart.com API token, the **Cronheart admin screens** (Settings → Cronheart and Settings → Cronheart Events) talk to the cronheart.com management API at `https://cronheart.com/api/v1/...`. Every such request carries the token as an `Authorization: Bearer` header and runs **only while a logged-in administrator is on one of those screens** — and, for the write actions below, only when that administrator clicks the control. Never on the front end, during WP-Cron, or in any other context. No token, no request. The calls are:
 
-* **Read your monitors** — `GET /api/v1/monitors` — to populate the heartbeat picker and the "Your monitors" table. Sends nothing beyond the token.
+* **Read your monitors** — `GET /api/v1/monitors` — to populate the heartbeat picker, the "Your monitors" table, and the per-event assignment dropdowns. Sends nothing beyond the token.
 * **Read your account** — `GET /api/v1/account` — to show your plan, monitor budget, and API rate-limit standing. Sends nothing beyond the token.
-* **Lifecycle actions** — `POST /api/v1/monitors/<uuid>/pause` (or `/resume`, `/snooze`, `/unsnooze`) — sent when you click a pause / resume / snooze / unsnooze button. Sends the monitor's UUID (in the path) and the action; snooze also sends the chosen duration (1 hour, 4 hours, 1 day, or 1 week). These are the only requests that change anything on cronheart.com, and each is one deliberate button click.
+* **Lifecycle actions** — `POST /api/v1/monitors/<uuid>/pause` (or `/resume`, `/snooze`, `/unsnooze`) — sent when you click a pause / resume / snooze / unsnooze button. Sends the monitor's UUID (in the path) and the action; snooze also sends the chosen duration (1 hour, 4 hours, 1 day, or 1 week).
+* **Create a monitor** — `POST /api/v1/monitors` — sent when you click "Auto-create & assign" for a recurring event on the Cronheart Events screen. Sends the event's hook name (as the monitor name), its schedule as an interval in seconds, the site timezone, and a grace period — all derived from the WP-Cron schedule.
 
-The token is optional. Without it the plugin makes none of these management calls — you paste a monitor UUID by hand and only the monitoring pings above are ever sent.
+The lifecycle and create calls are the only requests that change anything on cronheart.com, and each is one deliberate click. The token is optional: without it the plugin makes none of these management calls — you assign monitors by hand (or via the constants / helper) and only the monitoring pings above are ever sent.
 
 [Cronheart.com Terms of Service](https://cronheart.com/terms) · [Privacy policy](https://cronheart.com/privacy)
 
@@ -114,8 +116,15 @@ Open an issue on [GitHub](https://github.com/alexander-po/cronheart-wp/issues).
 
 1. The Cronheart settings page in WP admin: the cronheart.com connection section with the account plan and monitor-budget card, and the site-heartbeat monitor picker.
 2. The "Your monitors" table on the settings page — each monitor's status and any active snooze, with pause, resume, snooze, and unsnooze actions applied straight to cronheart.com.
+3. The Cronheart Events screen — the site's recurring WP-Cron events, each with a dropdown to assign a monitor or an "Auto-create & assign" button.
 
 == Changelog ==
+
+= 0.4.0 =
+* **Per-event monitoring UI.** A new Settings → Cronheart Events screen lists the site's recurring WP-Cron events and lets you, per event, assign one of your monitors from a dropdown or auto-create an interval monitor for it in one click — the point-and-click alternative to the `cronheart_monitor()` helper and `CRONHEART_EVENT_<HOOK>_UUID` constants (both still work and still take precedence).
+* **Auto-create.** "Auto-create & assign" derives an interval monitor from the event's WP-Cron schedule — name from the hook, interval in seconds, site timezone, and a grace period — within cronheart.com's accepted ranges, and is offered only for unmapped, recurring events. It is idempotency-keyed so a double click is safe.
+* The assign / auto-create actions go through the same admin-AJAX contract as 0.3.0 (nonce, `manage_options`, boundary validation, no public endpoint); the request hook is always validated against the discovered event set, and assigning a monitor is a local option write that needs no token. The live controls are token-gated like the heartbeat picker; without a token the screen is a read-only view.
+* The "External services" disclosure now also covers the create call (`POST /api/v1/monitors`), sent only when you click "Auto-create & assign".
 
 = 0.3.0 =
 * **Account overview.** With a cronheart.com API token configured, Settings → Cronheart now shows your plan, monitor budget (used / limit / remaining), and API rate-limit standing, with an upgrade nudge when you are near your monitor limit.
@@ -185,6 +194,9 @@ Open an issue on [GitHub](https://github.com/alexander-po/cronheart-wp/issues).
 * PHP fatal-error capture for the fail-ping body.
 
 == Upgrade Notice ==
+
+= 0.4.0 =
+Adds a Cronheart Events screen to assign or auto-create monitors for your recurring WP-Cron events from wp-admin — no code needed. Same admin-AJAX safety as 0.3.0; the constants and helper still work and take precedence. No token required; the runtime ping path is unchanged. Safe to upgrade.
 
 = 0.3.0 =
 Adds an account/plan card and a "Your monitors" table to pause, resume, snooze, or unsnooze monitors from wp-admin — the plugin's first admin-AJAX endpoint, nonce- and capability-gated. No token required; the runtime ping path is unchanged. Safe to upgrade.
