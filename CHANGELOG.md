@@ -8,6 +8,30 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 _Nothing yet — open a PR and add your entry under the appropriate subsection._
 
+## [0.5.0] — 2026-09-25
+
+Two read/manage features on the existing `Api\ManagementClient` + admin-AJAX foundation, no new infrastructure: notification-channel management (list / test / rotate-secret) and a read-only ping & alert history dashboard. Channel **creation** is deferred. The never-throw runtime ping path (`Api\Client`) is untouched, and the write-capable `cmk_` token still leaves the site only from wp-admin: reads while an administrator has a Cronheart screen open, writes only on an explicit click.
+
+### Added
+
+- **`Api\ManagementClient` channel + history wrappers** — `listChannels(): list<Channel>`, `testChannel(string $id): TestChannelResult`, `rotateChannelSecret(string $id): ChannelSecret`, `listPings(string $uuid, int $limit = 50): PingPage`, and `listAlerts(string $uuid, int $limit = 50): AlertPage`. Channel ids are the backend's BIGINT carried as strings and passed through verbatim (never cast); the two history reads return the first page only and never walk the SDK's `allPings()` / `allAlerts()` generators.
+- **`Admin\ChannelsScreen`** (Settings → Cronheart Channels) — a table of the account's channels (kind / label / verified) with a "Send test" action on every channel and a "Rotate secret" action on webhook channels only. Token-gated and degrades to a notice with no live controls when no token is configured or the listing fails.
+- **`Admin\HistoryScreen`** (Settings → Cronheart History) — a JavaScript-free GET monitor picker that renders the first page of the selected monitor's pings (kind / received / runtime) and alerts (kind / created / channels notified). The picker submits a SHA-256-derived handle (16 hex characters) of the monitor UUID, matched against the listed monitors, so the UUID never appears in a wp-admin URL; the selection is a read-only display filter that changes no state. The picker lists up to 200 monitors, the same cap as the heartbeat picker.
+- **Two admin-AJAX handlers** on `Admin\Ajax`: `cronheart_test_channel` and `cronheart_rotate_channel_secret`. Both keep the established contract — `check_ajax_referer` + `current_user_can( 'manage_options' )` + boundary validation (channel id against `^[1-9][0-9]*$`, kept a string) + a thrown SDK error mapped to a JSON envelope rather than a fatal — and register no `nopriv` companion. The test handler catches the SDK's `ChannelDeliveryException` ahead of the generic `ApiException` so a 502 delivery failure reports distinctly from a 422 unverified channel; the rotate handler returns the once-only plaintext secret only in its success envelope and never persists or logs it.
+
+### Changed
+
+- Bumped the bundled `cron-monitor/php-sdk` constraint from `^1.1` to `^1.4`; the shipped `vendor/` tree changes by the SDK only. 1.2 adds the typed `ChannelDeliveryException` (a `UnexpectedResponseException` subclass raised only by `testChannel()` on a 502) the channel-test handler consumes. 1.4 keeps monitor UUIDs and API tokens out of the SDK's log lines and exception text, holds the never-throw ping contract against a non-conforming HTTP stack, and reads an unrecognised status or kind as the server's raw string instead of failing the whole response.
+- A monitor status, ping kind or alert kind the bundled SDK does not recognise yet now renders verbatim in the heartbeat picker, the "Your monitors" table, the lifecycle AJAX payload and the History tables. Before, one unrecognised value failed the whole listing.
+- The account API token is now sent only to an `https://` endpoint, a rule the SDK enforces from 1.4. A site that pairs a plain-`http://` `CRONHEART_ENDPOINT` (with `CRONHEART_ALLOW_INSECURE_ENDPOINT`) and a token gets the manual-UUID fallback on the management screens; pings over plain HTTP are unaffected.
+- Bumped `readme.txt` "Tested up to" from `7.0` to `7.1` and the devstack WordPress image to `wordpress:7.1-php8.2-apache`.
+- Corrected the `readme.txt` FAQ, which claimed paid tiers unlock additional notification channels. Every plan, the free one included, gets all channel kinds; paid plans add the REST API access the token features use.
+- Corrected the `readme.txt` description of the Cronheart Events screen, which said the `cronheart_monitor()` helper takes precedence over an assignment made there. `Resolver::eventUuid()` reads the constant, then the screen's option, then the helper's filter, so only a `CRONHEART_EVENT_<HOOK>_UUID` constant overrides the screen.
+- `README.md` known limitations no longer say the monitor picker covers the heartbeat only; the Cronheart Events screen assigns per-event monitors since 0.4.0.
+- `assets/admin.js` now also wires the Channels table (test send + webhook secret rotation), still injecting every API-returned string — including the once-only plaintext secret — via `textContent`, never `innerHTML`; the rotate action confirms before firing.
+- Extended the `readme.txt` "External services" disclosure to cover the channel reads / test / rotate-secret calls and the history reads, calling out that "Send test" delivers a real notification to the channel's destination and "Rotate secret" invalidates the old webhook secret.
+- Bumped the plugin header `Version` and `readme.txt` `Stable tag` to `0.5.0`.
+
 ## [0.4.0] — 2026-06-20
 
 Part D of the management-UI arc: a point-and-click per-event monitoring screen. Settings → Cronheart Events lists the site's recurring WP-Cron events and, per event, assigns one of the account's monitors or auto-creates an interval monitor for it — the no-code alternative to the `cronheart_monitor()` helper and `CRONHEART_EVENT_<HOOK>_UUID` constants, which still work and still take precedence. Builds on the `Api\ManagementClient` seam and the admin-AJAX layer from 0.3.0; the never-throw runtime ping path is untouched.

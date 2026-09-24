@@ -9,6 +9,7 @@ use Cronheart\WP\Config\Resolver;
 use CronMonitor\Api\Dto\Account;
 use CronMonitor\Api\Dto\Monitor;
 use CronMonitor\Api\Dto\MonitorBudget;
+use CronMonitor\Api\Dto\Vocabulary;
 use CronMonitor\Api\Exception\AuthenticationException;
 use CronMonitor\Api\Exception\PlanRestrictionException;
 use CronMonitor\Api\Exception\RateLimitException;
@@ -777,7 +778,7 @@ final class SettingsPage
         printf(
             '<tr data-cronheart-uuid="%1$s" data-cronheart-status="%2$s" data-cronheart-snoozed="%3$s">',
             esc_attr($monitor->uuid),
-            esc_attr($monitor->status->value),
+            esc_attr(Vocabulary::value($monitor->status)),
             esc_attr(null === $monitor->snoozedUntil ? '0' : '1')
         );
 

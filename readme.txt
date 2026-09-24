@@ -2,9 +2,9 @@
 Contributors: cronheart
 Tags: cron, wp-cron, monitoring, healthcheck, deadman-switch
 Requires at least: 6.0
-Tested up to: 7.0
+Tested up to: 7.1
 Requires PHP: 8.2
-Stable tag: 0.4.0
+Stable tag: 0.5.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -24,7 +24,9 @@ Cronheart turns WP-Cron into a **dead-man switch**: the plugin pings [cronheart.
 * **Settings page.** A read-only "Monitored events" table at Settings → Cronheart shows every hook the plugin is watching and where its UUID came from (constant, option, filter).
 * **Monitor picker.** Save a cronheart.com API token and the site heartbeat field becomes a dropdown of your account's monitors instead of a hand-typed UUID. Entirely optional — without a token you paste the UUID as before, and any API hiccup falls back to that field. The token is write-only and never leaves wp-admin.
 * **Account overview and monitor management.** With a token configured, Settings → Cronheart shows your plan and monitor budget, and a "Your monitors" table listing each monitor with its status and any active snooze. From that table you can pause, resume, snooze (1 hour, 4 hours, 1 day, or 1 week), or unsnooze a monitor; the change applies on cronheart.com immediately. Every action is an authenticated administrator request — nothing happens without your click.
-* **Per-event monitoring UI.** A new Settings → Cronheart Events screen lists the recurring WP-Cron events on your site and lets you, per event, either assign one of your monitors from a dropdown or auto-create an interval monitor for it in one click — no code required. This is the point-and-click alternative to the `cronheart_monitor()` helper and `CRONHEART_EVENT_<HOOK>_UUID` constants (both still work and take precedence).
+* **Per-event monitoring UI.** A new Settings → Cronheart Events screen lists the recurring WP-Cron events on your site and lets you, per event, either assign one of your monitors from a dropdown or auto-create an interval monitor for it in one click — no code required. This is the point-and-click alternative to the `cronheart_monitor()` helper and `CRONHEART_EVENT_<HOOK>_UUID` constants, which still work. A constant overrides an assignment made on this screen; an assignment made on this screen overrides the helper.
+* **Channel management.** A Settings → Cronheart Channels screen lists your cronheart.com notification channels and lets you, per channel, send a real test alert through it or — for webhook channels — rotate the signing secret (revealed once). Creating channels stays on cronheart.com; this screen tests and maintains the ones you already have.
+* **Ping & alert history.** A Settings → Cronheart History screen shows the most recent pings (kind, time, runtime) and alerts (kind, time, channels notified) for a monitor you pick (the picker lists up to 200 monitors) — a read-only at-a-glance log without leaving WordPress.
 * **Configuration through `wp-config.php` constants** for production (`CRONHEART_HEARTBEAT_UUID`, `CRONHEART_EVENT_<HOOK>_UUID`), with admin-UI fallback for sites where editing `wp-config.php` is not practical.
 
 = Never breaks WP-Cron =
@@ -41,14 +43,18 @@ This plugin sends HTTP requests to [cronheart.com](https://cronheart.com) in two
 * A short body excerpt — capped at 10 KB — containing either an exception summary (for `fail` pings) or nothing (for `start` / `success` / `heartbeat`).
 * The plugin / SDK version in a `User-Agent` header.
 
-**2. Account management (wp-admin only).** When — and only when — you save a cronheart.com API token, the **Cronheart admin screens** (Settings → Cronheart and Settings → Cronheart Events) talk to the cronheart.com management API at `https://cronheart.com/api/v1/...`. Every such request carries the token as an `Authorization: Bearer` header and runs **only while a logged-in administrator is on one of those screens** — and, for the write actions below, only when that administrator clicks the control. Never on the front end, during WP-Cron, or in any other context. No token, no request. The calls are:
+**2. Account management (wp-admin only).** When — and only when — you save a cronheart.com API token, the **Cronheart admin screens** (Settings → Cronheart, Settings → Cronheart Events, Settings → Cronheart Channels, and Settings → Cronheart History) talk to the cronheart.com management API at `https://cronheart.com/api/v1/...`. Every such request carries the token as an `Authorization: Bearer` header and runs **only while a logged-in administrator is on one of those screens** — and, for the write actions below, only when that administrator clicks the control. Never on the front end, during WP-Cron, or in any other context. No token, no request. The calls are:
 
-* **Read your monitors** — `GET /api/v1/monitors` — to populate the heartbeat picker, the "Your monitors" table, and the per-event assignment dropdowns. Sends nothing beyond the token.
+* **Read your monitors** — `GET /api/v1/monitors` — to populate the heartbeat picker, the "Your monitors" table, the per-event assignment dropdowns, and the Cronheart History monitor picker. Sends nothing beyond the token and paging parameters.
 * **Read your account** — `GET /api/v1/account` — to show your plan, monitor budget, and API rate-limit standing. Sends nothing beyond the token.
 * **Lifecycle actions** — `POST /api/v1/monitors/<uuid>/pause` (or `/resume`, `/snooze`, `/unsnooze`) — sent when you click a pause / resume / snooze / unsnooze button. Sends the monitor's UUID (in the path) and the action; snooze also sends the chosen duration (1 hour, 4 hours, 1 day, or 1 week).
 * **Create a monitor** — `POST /api/v1/monitors` — sent when you click "Auto-create & assign" for a recurring event on the Cronheart Events screen. Sends the event's hook name (as the monitor name), its schedule as an interval in seconds, the site timezone, and a grace period — all derived from the WP-Cron schedule.
+* **Read your channels** — `GET /api/v1/channels` — to populate the Cronheart Channels screen. Sends nothing beyond the token.
+* **Send a test alert** — `POST /api/v1/channels/<id>/test` — sent when you click "Send test" on a channel. This **delivers a real notification** to that channel's destination (your configured email, Telegram, Slack, Discord, or webhook), so it is the one management call with an effect outside cronheart.com. Sends only the channel id (in the path).
+* **Rotate a webhook secret** — `POST /api/v1/channels/<id>/rotate-secret` — sent when you click "Rotate secret" on a webhook channel. cronheart.com mints a new signing secret (shown to you once) and invalidates the previous one. Sends only the channel id (in the path); the new secret is shown in the page and never stored by the plugin.
+* **Read ping & alert history** — `GET /api/v1/monitors/<uuid>/pings` and `GET /api/v1/monitors/<uuid>/alerts` — to populate the Cronheart History screen for the monitor you select. Reads the most recent page only. Sends the monitor's UUID (in the path) and paging parameters.
 
-The lifecycle and create calls are the only requests that change anything on cronheart.com, and each is one deliberate click. The token is optional: without it the plugin makes none of these management calls — you assign monitors by hand (or via the constants / helper) and only the monitoring pings above are ever sent.
+The lifecycle, create, test, and rotate-secret calls are the only requests that change anything — and "Send test" additionally delivers a real notification to the channel's destination, while "Rotate secret" invalidates the old webhook secret — but each is one deliberate administrator click. The token is optional: without it the plugin makes none of these management calls — you assign monitors by hand (or via the constants / helper) and only the monitoring pings above are ever sent.
 
 [Cronheart.com Terms of Service](https://cronheart.com/terms) · [Privacy policy](https://cronheart.com/privacy)
 
@@ -86,7 +92,7 @@ The plugin will retry once (built-in retry budget) and then log a warning to `de
 
 = Do I need a paid cronheart.com account? =
 
-No. Cronheart's free tier covers 20 monitors per account — enough for a typical site's heartbeat plus several per-event monitors. Paid tiers (Starter / Growth / Scale) raise the cap and unlock additional notification channels.
+No. Cronheart's free tier covers 20 monitors per account — enough for a typical site's heartbeat plus several per-event monitors. Every tier, the free one included, gets all notification channels (email, Telegram, Slack, Discord and signed webhooks). Paid tiers (Starter / Growth / Scale) raise the monitor cap and add REST API access, which the optional token features in wp-admin use.
 
 = Do I need an API token? =
 
@@ -106,7 +112,7 @@ No. The plugin sends a ping to cronheart only when you have configured a monitor
 
 = Can I point the plugin at a non-production cronheart deployment (staging / private / self-hosted)? =
 
-Yes. Define `CRONHEART_ENDPOINT` in `wp-config.php` with the URL of your alternate deployment. For plain `http://` endpoints (local development, private VPNs without TLS) also set `CRONHEART_ALLOW_INSECURE_ENDPOINT` to `true`. With both unset, the plugin pings the production cronheart.com over HTTPS.
+Yes. Define `CRONHEART_ENDPOINT` in `wp-config.php` with the URL of your alternate deployment. For plain `http://` endpoints (local development, private VPNs without TLS) also set `CRONHEART_ALLOW_INSECURE_ENDPOINT` to `true`. With both unset, the plugin pings the production cronheart.com over HTTPS. The API token is only ever sent over HTTPS, so with a plain `http://` endpoint the settings screens fall back to manual UUID entry while pings keep working.
 
 = Where can I report bugs or request features? =
 
@@ -117,8 +123,22 @@ Open an issue on [GitHub](https://github.com/alexander-po/cronheart-wp/issues).
 1. The Cronheart settings page in WP admin: the cronheart.com connection section with the account plan and monitor-budget card, and the site-heartbeat monitor picker.
 2. The "Your monitors" table on the settings page — each monitor's status and any active snooze, with pause, resume, snooze, and unsnooze actions applied straight to cronheart.com.
 3. The Cronheart Events screen — the site's recurring WP-Cron events, each with a dropdown to assign a monitor or an "Auto-create & assign" button.
+4. The Cronheart Channels screen — your cronheart.com notification channels, each with a "Send test" action and, for webhook channels, a "Rotate secret" action.
+5. The Cronheart History screen — the most recent pings and alerts for a selected monitor.
 
 == Changelog ==
+
+= 0.5.0 =
+* **Channel management.** A new Settings → Cronheart Channels screen lists your cronheart.com notification channels and lets you, per channel, send a real test alert through it or — for webhook channels only — rotate the signing secret (revealed once, then never shown again). Creating channels stays on cronheart.com for now; this screen tests and maintains the channels you already have.
+* **Ping & alert history.** A new Settings → Cronheart History screen shows the most recent pings (kind / time / runtime) and alerts (kind / time / channels notified) for a monitor you pick (the picker lists up to 200 monitors). Read-only, and only the first page (latest 50 of each) — it never walks your whole history.
+* Both screens reuse the same admin-AJAX contract as the earlier management UI (nonce, `manage_options`, boundary validation, no public endpoint) and the throwing management client; "Send test" delivers a real notification, and the rotated webhook secret is shown once and never stored by the plugin. The runtime ping path is unchanged.
+* Upgraded the bundled `cron-monitor/php-sdk` to `^1.4`. It adds the typed channel-test delivery exception, so a failed test send reports "the destination rejected delivery" distinctly from other errors, and it keeps monitor UUIDs and API tokens out of its log lines and error text.
+* A monitor status, ping kind or alert kind this version does not recognise yet is now shown as-is on the admin screens instead of failing the whole listing.
+* The API token is now sent only over HTTPS. With a plain `http://` endpoint the management screens fall back to manual UUID entry; pings keep working.
+* Tested up to WordPress 7.1.
+* Corrected the FAQ: notification channels are available on every cronheart.com plan, including the free one; paid plans add the REST API access the token features use.
+* Corrected the description of the Cronheart Events screen: an assignment made there overrides the `cronheart_monitor()` helper, and only a `CRONHEART_EVENT_<HOOK>_UUID` constant overrides the assignment. Earlier notes said the helper took precedence.
+* The "External services" disclosure now also covers the channel reads / test / rotate-secret calls and the history reads — including that "Send test" sends a real notification to the channel's destination.
 
 = 0.4.0 =
 * **Per-event monitoring UI.** A new Settings → Cronheart Events screen lists the site's recurring WP-Cron events and lets you, per event, assign one of your monitors from a dropdown or auto-create an interval monitor for it in one click — the point-and-click alternative to the `cronheart_monitor()` helper and `CRONHEART_EVENT_<HOOK>_UUID` constants (both still work and still take precedence).
@@ -194,6 +214,9 @@ Open an issue on [GitHub](https://github.com/alexander-po/cronheart-wp/issues).
 * PHP fatal-error capture for the fail-ping body.
 
 == Upgrade Notice ==
+
+= 0.5.0 =
+Adds Cronheart Channels (test a channel, rotate a webhook secret) and Cronheart History (recent pings & alerts) screens. "Send test" sends a real notification; a rotated secret is shown once. The API token now needs an https:// endpoint; the ping path is unchanged.
 
 = 0.4.0 =
 Adds a Cronheart Events screen to assign or auto-create monitors for your recurring WP-Cron events from wp-admin — no code needed. Same admin-AJAX safety as 0.3.0; the constants and helper still work and take precedence. No token required; the runtime ping path is unchanged. Safe to upgrade.

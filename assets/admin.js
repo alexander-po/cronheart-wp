@@ -1,11 +1,13 @@
 /**
- * Cronheart admin — monitor lifecycle + per-event mapping.
+ * Cronheart admin — monitor lifecycle, per-event mapping, channels.
  *
- * Enqueued on the two Cronheart admin screens. Wires:
+ * Enqueued on the Cronheart admin screens. Wires:
  *   - the "Your monitors" table (Settings → Cronheart): pause / resume /
  *     snooze / unsnooze;
  *   - the "Cron events" table (Settings → Cronheart Events): assign a monitor
- *     to a hook, or auto-create one.
+ *     to a hook, or auto-create one;
+ *   - the "Channels" table (Settings → Cronheart Channels): send a test alert
+ *     through a channel, or rotate a webhook channel's signing secret.
  * Each posts to the authenticated admin-AJAX endpoint and applies the result.
  *
  * Every string the server returns (status label, snooze deadline, mapping
@@ -200,6 +202,90 @@
 		} );
 	}
 
+	// ── Channels table (test / rotate secret) ───────────────────────────
+
+	function channelRow( el ) {
+		return el.closest ? el.closest( '[data-cronheart-channel-id]' ) : null;
+	}
+
+	function channelBusy( row, busy ) {
+		var controls = row.querySelectorAll( '.cronheart-channel-test, .cronheart-channel-rotate' );
+		for ( var i = 0; i < controls.length; i++ ) {
+			controls[ i ].disabled = busy;
+		}
+	}
+
+	function postChannel( row, action, busyMessage ) {
+		var body = new URLSearchParams();
+		body.set( 'action', action );
+		body.set( 'nonce', cfg.nonce );
+		body.set( 'channel_id', row.getAttribute( 'data-cronheart-channel-id' ) );
+
+		channelBusy( row, true );
+		setText( row, '.cronheart-channel-feedback', busyMessage );
+
+		return post( body ).then( function ( payload ) {
+			if ( payload && payload.success && payload.data ) {
+				setText( row, '.cronheart-channel-feedback', payload.data.message || '' );
+				return payload.data;
+			}
+			setText( row, '.cronheart-channel-feedback', ( payload && payload.data && payload.data.message ) || cfg.i18n.error );
+			return null;
+		} ).catch( function () {
+			setText( row, '.cronheart-channel-feedback', cfg.i18n.error );
+			return null;
+		} ).then( function ( data ) {
+			channelBusy( row, false );
+			return data;
+		} );
+	}
+
+	function revealSecret( row, secret ) {
+		var reveal = row.querySelector( '.cronheart-channel-secret' );
+		if ( ! reveal ) {
+			return;
+		}
+		var value = reveal.querySelector( '.cronheart-channel-secret-value' );
+		if ( value ) {
+			value.textContent = secret;
+		}
+		reveal.hidden = false;
+	}
+
+	function onChannelClick( event ) {
+		var closest = event.target.closest ? event.target.closest.bind( event.target ) : null;
+		var testBtn = closest ? closest( '.cronheart-channel-test' ) : null;
+		var rotateBtn = closest ? closest( '.cronheart-channel-rotate' ) : null;
+		if ( ! testBtn && ! rotateBtn ) {
+			return;
+		}
+		var row = channelRow( testBtn || rotateBtn );
+		if ( ! row ) {
+			return;
+		}
+		event.preventDefault();
+
+		if ( testBtn ) {
+			postChannel( row, cfg.actions.testChannel, cfg.i18n.testing ).then( function ( data ) {
+				if ( data && data.newly_verified ) {
+					setText( row, '.cronheart-channel-verified', cfg.i18n.verified );
+					row.setAttribute( 'data-cronheart-channel-verified', '1' );
+				}
+			} );
+			return;
+		}
+
+		// Rotating invalidates the current secret immediately — confirm first.
+		if ( cfg.i18n.rotateConfirm && ! window.confirm( cfg.i18n.rotateConfirm ) ) {
+			return;
+		}
+		postChannel( row, cfg.actions.rotateChannelSecret, cfg.i18n.rotating ).then( function ( data ) {
+			if ( data && data.secret ) {
+				revealSecret( row, data.secret );
+			}
+		} );
+	}
+
 	function ready() {
 		var monitorsTable = document.querySelector( '.cronheart-monitors' );
 		if ( monitorsTable ) {
@@ -214,6 +300,11 @@
 		if ( eventsTable ) {
 			eventsTable.addEventListener( 'change', onEventChange );
 			eventsTable.addEventListener( 'click', onEventClick );
+		}
+
+		var channelsTable = document.querySelector( '.cronheart-channels' );
+		if ( channelsTable ) {
+			channelsTable.addEventListener( 'click', onChannelClick );
 		}
 	}
 

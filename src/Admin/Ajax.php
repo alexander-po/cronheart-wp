@@ -11,8 +11,13 @@ use Cronheart\WP\Cron\IntervalMonitorBlueprint;
 use CronMonitor\Api\Dto\Monitor;
 use CronMonitor\Api\Dto\MonitorStatus;
 use CronMonitor\Api\Dto\SnoozeDuration;
+use CronMonitor\Api\Dto\Vocabulary;
 use CronMonitor\Api\Exception\ApiException;
+use CronMonitor\Api\Exception\AuthenticationException;
+use CronMonitor\Api\Exception\ChannelDeliveryException;
 use CronMonitor\Api\Exception\ConflictException;
+use CronMonitor\Api\Exception\ForbiddenException;
+use CronMonitor\Api\Exception\NotFoundException;
 use CronMonitor\Api\Exception\PlanRestrictionException;
 use CronMonitor\Api\Exception\RateLimitException;
 use CronMonitor\Api\Exception\ValidationException;
@@ -22,15 +27,16 @@ use CronMonitor\Api\Exception\ValidationException;
 \defined('ABSPATH') || exit;
 
 /**
- * The plugin's authenticated admin-AJAX surface. Three actions, all on the
+ * The plugin's authenticated admin-AJAX surface. Five actions, all on the
  * same security contract:
  *   1. nonce ({@see check_ajax_referer}) — a stale nonce returns a
  *      "reload and try again" JSON error, never a dead -1 / 403 page;
  *   2. capability ({@see current_user_can} `manage_options`);
  *   3. boundary validation — a monitor UUID against the canonical v4
- *      pattern, an `op` against a fixed allow-list, a snooze duration
- *      against the closed {@see SnoozeDuration} enum, and a cron **hook
- *      against the discovered event set** (never a trusted client string).
+ *      pattern, a channel id against the positive-integer pattern, an `op`
+ *      against a fixed allow-list, a snooze duration against the closed
+ *      {@see SnoozeDuration} enum, and a cron **hook against the discovered
+ *      event set** (never a trusted client string).
  * A thrown SDK {@see ApiException} is mapped to a {@see wp_send_json_error}
  * envelope — never an uncaught 500 — so the host admin page degrades to a
  * readable message rather than a fatal.
@@ -41,8 +47,12 @@ use CronMonitor\Api\Exception\ValidationException;
  *   - {@see ACTION_MAP_EVENT} (assign a monitor UUID to a WP-Cron hook, or
  *     suppress it) — a pure `cronheart_event_map` option write, no API call;
  *   - {@see ACTION_CREATE_EVENT} (auto-create an interval monitor for an
- *     unmapped recurring hook, then assign it) — the only event action that
- *     calls cronheart.com.
+ *     unmapped recurring hook, then assign it) — calls cronheart.com;
+ *   - {@see ACTION_TEST_CHANNEL} (send a real test alert through a channel) —
+ *     an outbound side effect, so it surfaces the unverified (422), delivery-
+ *     failed (502), and rate-limited (429) paths distinctly;
+ *   - {@see ACTION_ROTATE_CHANNEL_SECRET} (rotate a webhook channel's signing
+ *     secret) — returns a once-only plaintext that is never persisted.
  *
  * Only the authenticated `wp_ajax_*` actions are registered. There is
  * deliberately no `wp_ajax_nopriv_*` companion: monitor management is an
@@ -64,6 +74,12 @@ final class Ajax
     /** Auto-create an interval monitor for an unmapped recurring hook. */
     public const ACTION_CREATE_EVENT = 'cronheart_create_event_monitor';
 
+    /** Send a real test alert through a notification channel. */
+    public const ACTION_TEST_CHANNEL = 'cronheart_test_channel';
+
+    /** Rotate a webhook channel's signing secret (once-only plaintext reveal). */
+    public const ACTION_ROTATE_CHANNEL_SECRET = 'cronheart_rotate_channel_secret';
+
     /**
      * Allow-listed lifecycle operations. A request `op` outside this set is
      * rejected at the boundary before any client is built.
@@ -75,6 +91,14 @@ final class Ajax
      * {@see SettingsPage::sanitize_uuid()} accepts.
      */
     private const UUID_PATTERN = '/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i';
+
+    /**
+     * Channel ids are the backend's BIGINT carried as strings — a positive
+     * integer with no leading zero, matching the SDK's own assertion. Kept as
+     * a string end-to-end (never cast) so a value beyond PHP's int range is
+     * still accepted.
+     */
+    private const CHANNEL_ID_PATTERN = '/^[1-9][0-9]*$/';
 
     /**
      * @param \Closure(string): ManagementClient $managementClientFactory builds the
@@ -101,6 +125,8 @@ final class Ajax
         add_action('wp_ajax_'.self::ACTION, [$this, 'handle']);
         add_action('wp_ajax_'.self::ACTION_MAP_EVENT, [$this, 'handleMapEvent']);
         add_action('wp_ajax_'.self::ACTION_CREATE_EVENT, [$this, 'handleCreateEventMonitor']);
+        add_action('wp_ajax_'.self::ACTION_TEST_CHANNEL, [$this, 'handleTestChannel']);
+        add_action('wp_ajax_'.self::ACTION_ROTATE_CHANNEL_SECRET, [$this, 'handleRotateChannelSecret']);
     }
 
     /**
@@ -119,11 +145,17 @@ final class Ajax
                 'monitor' => self::ACTION,
                 'mapEvent' => self::ACTION_MAP_EVENT,
                 'createEvent' => self::ACTION_CREATE_EVENT,
+                'testChannel' => self::ACTION_TEST_CHANNEL,
+                'rotateChannelSecret' => self::ACTION_ROTATE_CHANNEL_SECRET,
             ],
             'i18n' => [
                 'working' => __('Working…', 'cronheart'),
                 'saving' => __('Saving…', 'cronheart'),
                 'creating' => __('Creating monitor…', 'cronheart'),
+                'testing' => __('Sending test…', 'cronheart'),
+                'rotating' => __('Rotating…', 'cronheart'),
+                'verified' => __('Verified', 'cronheart'),
+                'rotateConfirm' => __('Rotating the signing secret immediately invalidates the current one. Continue?', 'cronheart'),
                 'error' => __('Something went wrong. Please try again.', 'cronheart'),
             ],
         ];
@@ -366,11 +398,169 @@ final class Ajax
     }
 
     /**
-     * Map a monitor status to its translated label. Public + static so the
-     * settings-page table and this AJAX payload share one mapping; all five
-     * cases are handled so the match is exhaustive.
+     * Send a real test alert through a channel. The only channel action with
+     * an outbound side effect, so each failure mode is surfaced distinctly:
+     * an unverified / transport-less channel is a `422`, a destination that
+     * rejected the delivery is a `502` ({@see ChannelDeliveryException}), and
+     * a rate-limited test send is a `429` — none of them an uncaught fatal.
      */
-    public static function statusLabel(MonitorStatus $status): string
+    public function handleTestChannel(): void
+    {
+        if (false === check_ajax_referer(self::ACTION, 'nonce', false)) {
+            $this->fail(__('Your session has expired. Reload the page and try again.', 'cronheart'), 403);
+
+            return;
+        }
+
+        if (!current_user_can('manage_options')) {
+            $this->fail(__('You do not have permission to manage channels.', 'cronheart'), 403);
+
+            return;
+        }
+
+        $token = $this->resolver->apiToken();
+        if (null === $this->managementClientFactory || null === $token) {
+            $this->fail(__('Connect a cronheart.com API token to manage channels.', 'cronheart'), 400);
+
+            return;
+        }
+
+        $rawChannelId = isset($_POST['channel_id']) && \is_string($_POST['channel_id'])
+            ? sanitize_text_field(wp_unslash($_POST['channel_id']))
+            : '';
+        $channelId = $this->validChannelId($rawChannelId);
+        if (null === $channelId) {
+            $this->fail(__('That is not a valid channel.', 'cronheart'), 400);
+
+            return;
+        }
+
+        try {
+            $client = ($this->managementClientFactory)($token);
+            $result = $client->testChannel($channelId);
+        } catch (PlanRestrictionException) {
+            $this->fail(__('Your cronheart.com plan does not include API access.', 'cronheart'), 402);
+
+            return;
+        } catch (RateLimitException) {
+            $this->fail(__('cronheart.com is rate-limiting test sends right now. Try again in a minute.', 'cronheart'), 429);
+
+            return;
+        } catch (ValidationException) {
+            $this->fail(__('This channel is not verified yet (or has no destination configured), so a test alert cannot be sent. Verify it at cronheart.com first.', 'cronheart'), 422);
+
+            return;
+        } catch (ChannelDeliveryException) {
+            $this->fail(__('The test reached cronheart.com, but the destination rejected or failed the delivery. Check the channel\'s configuration at cronheart.com.', 'cronheart'), 502);
+
+            return;
+        } catch (ApiException) {
+            $this->fail(__('cronheart.com could not send the test alert. Please try again.', 'cronheart'), 502);
+
+            return;
+        } catch (\Throwable) {
+            $this->fail(__('Could not reach cronheart.com. Please try again.', 'cronheart'), 502);
+
+            return;
+        }
+
+        wp_send_json_success([
+            'channel_id' => $channelId,
+            'delivered' => $result->delivered,
+            'newly_verified' => $result->newlyVerified,
+            'verified' => $result->channel->verified,
+            'message' => $result->newlyVerified
+                ? __('Test alert delivered — this channel is now verified.', 'cronheart')
+                : __('Test alert delivered.', 'cronheart'),
+        ]);
+    }
+
+    /**
+     * Rotate a webhook channel's signing secret and return the once-only
+     * plaintext for the inline reveal. The plaintext is sent only in this
+     * success envelope and is never persisted or logged here. A 402, 422 or
+     * 429 keeps its own message, and a refusal (401 / 403 / 404) or a factory
+     * that could not build the client says nothing was rotated. Every other
+     * failure keeps the conservative message that the old secret may already
+     * be invalid, because the backend may have replaced it before failing.
+     */
+    public function handleRotateChannelSecret(): void
+    {
+        if (false === check_ajax_referer(self::ACTION, 'nonce', false)) {
+            $this->fail(__('Your session has expired. Reload the page and try again.', 'cronheart'), 403);
+
+            return;
+        }
+
+        if (!current_user_can('manage_options')) {
+            $this->fail(__('You do not have permission to manage channels.', 'cronheart'), 403);
+
+            return;
+        }
+
+        $token = $this->resolver->apiToken();
+        if (null === $this->managementClientFactory || null === $token) {
+            $this->fail(__('Connect a cronheart.com API token to manage channels.', 'cronheart'), 400);
+
+            return;
+        }
+
+        $rawChannelId = isset($_POST['channel_id']) && \is_string($_POST['channel_id'])
+            ? sanitize_text_field(wp_unslash($_POST['channel_id']))
+            : '';
+        $channelId = $this->validChannelId($rawChannelId);
+        if (null === $channelId) {
+            $this->fail(__('That is not a valid channel.', 'cronheart'), 400);
+
+            return;
+        }
+
+        try {
+            $client = ($this->managementClientFactory)($token);
+        } catch (\Throwable) {
+            $this->fail(__('Could not reach cronheart.com. The signing secret was not rotated.', 'cronheart'), 502);
+
+            return;
+        }
+
+        try {
+            $secret = $client->rotateChannelSecret($channelId);
+        } catch (PlanRestrictionException) {
+            $this->fail(__('Your cronheart.com plan does not include API access.', 'cronheart'), 402);
+
+            return;
+        } catch (RateLimitException) {
+            $this->fail(__('cronheart.com is rate-limiting requests right now. Try again in a minute.', 'cronheart'), 429);
+
+            return;
+        } catch (ValidationException) {
+            $this->fail(__('Only webhook channels have a rotatable signing secret.', 'cronheart'), 422);
+
+            return;
+        } catch (AuthenticationException|ForbiddenException|NotFoundException) {
+            $this->fail(__('cronheart.com refused the rotation, so the signing secret was not rotated. Check the API token and that the channel still exists.', 'cronheart'), 502);
+
+            return;
+        } catch (\Throwable) {
+            $this->fail(__('cronheart.com did not confirm the rotation. The old signing secret may already be invalid — rotate again to get a new secret you can copy.', 'cronheart'), 502);
+
+            return;
+        }
+
+        wp_send_json_success([
+            'channel_id' => $channelId,
+            'secret' => $secret->secret,
+            'message' => __('Signing secret rotated — copy the new secret now, it is shown only once.', 'cronheart'),
+        ]);
+    }
+
+    /**
+     * Map a monitor status to its translated label. Public + static so the
+     * settings-page table and this AJAX payload share one mapping. A status
+     * the bundled SDK does not know yet arrives as the server's raw string
+     * and is shown verbatim rather than breaking the render.
+     */
+    public static function statusLabel(MonitorStatus|string $status): string
     {
         return match ($status) {
             MonitorStatus::New => __('New', 'cronheart'),
@@ -378,6 +568,7 @@ final class Ajax
             MonitorStatus::Late => __('Late', 'cronheart'),
             MonitorStatus::Down => __('Down', 'cronheart'),
             MonitorStatus::Paused => __('Paused', 'cronheart'),
+            default => Vocabulary::value($status),
         };
     }
 
@@ -415,7 +606,7 @@ final class Ajax
     {
         return [
             'uuid' => $monitor->uuid,
-            'status' => $monitor->status->value,
+            'status' => Vocabulary::value($monitor->status),
             'status_label' => self::statusLabel($monitor->status),
             'snoozed' => null !== $monitor->snoozedUntil,
             'snoozed_until' => self::snoozeUntilLabel($monitor->snoozedUntil),
@@ -480,6 +671,11 @@ final class Ajax
     private function validUuid(string $raw): ?string
     {
         return 1 === preg_match(self::UUID_PATTERN, $raw) ? strtolower($raw) : null;
+    }
+
+    private function validChannelId(string $raw): ?string
+    {
+        return 1 === preg_match(self::CHANNEL_ID_PATTERN, $raw) ? $raw : null;
     }
 
     private function fail(string $message, int $statusCode): void

@@ -166,16 +166,12 @@ add_action( 'plugins_loaded', function () {
   this plugin** (e.g. another plugin reading our autoload) — that
   surface may move in a future minor release without warning.
 - **No WP-CLI commands** yet — `wp cronheart status` / `sync` are on
-  the roadmap, not in 0.2.x.
+  the roadmap.
 - **No multisite / network-activation handling** yet. The plugin works
   on a single-site install.
 - **No Action Scheduler instrumentation** — only WP-Cron hooks are
   monitored. WooCommerce stacks using Action Scheduler for tasks
   will not see those events on the cronheart dashboard yet.
-- **The monitor picker covers the site heartbeat only.** Per-event
-  monitors are still registered through PHP (`cronheart_monitor()`) or
-  `CRONHEART_EVENT_<HOOK>_UUID` constants; the "Monitored events" table
-  in Settings → Cronheart is read-only.
 
 ## Companion projects
 

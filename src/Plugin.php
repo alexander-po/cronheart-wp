@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace Cronheart\WP;
 
 use Cronheart\WP\Admin\Ajax;
+use Cronheart\WP\Admin\ChannelsScreen;
 use Cronheart\WP\Admin\CronEventsScreen;
 use Cronheart\WP\Admin\EventList;
+use Cronheart\WP\Admin\HistoryScreen;
 use Cronheart\WP\Admin\SettingsPage;
 use Cronheart\WP\Api\Client;
 use Cronheart\WP\Api\ManagementClient;
@@ -87,6 +89,8 @@ final class Plugin
 
         (new SettingsPage(new EventList($resolver), $resolver, $managementClientFactory, $pluginFile))->register();
         (new CronEventsScreen($eventDiscovery, $resolver, $managementClientFactory, $pluginFile))->register();
+        (new ChannelsScreen($resolver, $managementClientFactory, $pluginFile))->register();
+        (new HistoryScreen($resolver, $managementClientFactory))->register();
         (new Ajax($resolver, $managementClientFactory, $eventDiscovery))->register();
     }
 
@@ -107,20 +111,20 @@ final class Plugin
     }
 
     /**
-     * Build the factory the settings page calls to obtain a
-     * {@see ManagementClient} for the account token. It is invoked lazily,
-     * only on the Settings → Cronheart page render and only when an API
-     * token is configured — never on the front end, in WP-Cron, or during
-     * the runtime ping path. That single construction site is what keeps
-     * the plugin's "External services" disclosure accurate: the
-     * write-capable account token leaves the site only from wp-admin.
+     * Build the factory the Cronheart admin screens and admin-AJAX handlers
+     * call to obtain a {@see ManagementClient} for the account token. It is
+     * invoked lazily, only from those wp-admin code paths and only when an
+     * API token is configured — never on the front end, in WP-Cron, or during
+     * the runtime ping path. That is what keeps the plugin's "External
+     * services" disclosure accurate: the write-capable account token leaves
+     * the site only from wp-admin.
      *
      * The factory throws a {@see \RuntimeException} if the endpoint is
-     * misconfigured (the settings page treats that as a generic "could not
-     * reach" fallback); the {@see ManagementClient} it returns lets the
-     * SDK's typed {@see \CronMonitor\Api\Exception\ApiException} subclasses
-     * propagate so the admin layer can map each failure to the right
-     * notice and fall back to the manual UUID field.
+     * misconfigured, which every screen and handler treats as a generic
+     * "could not reach" failure; the {@see ManagementClient} it returns lets
+     * the SDK's typed {@see \CronMonitor\Api\Exception\ApiException}
+     * subclasses propagate so the admin layer can map each failure to the
+     * right notice or JSON error.
      *
      * @return \Closure(string): ManagementClient
      */

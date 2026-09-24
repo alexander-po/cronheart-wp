@@ -17,6 +17,7 @@ use CronMonitor\Api\MonitorApiClient;
 use CronMonitor\Client\Configuration;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use Nyholm\Psr7\Response;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 final class AjaxTest extends TestCase
@@ -52,13 +53,17 @@ final class AjaxTest extends TestCase
         Actions\expectAdded('wp_ajax_'.Ajax::ACTION)->once();
         Actions\expectAdded('wp_ajax_'.Ajax::ACTION_MAP_EVENT)->once();
         Actions\expectAdded('wp_ajax_'.Ajax::ACTION_CREATE_EVENT)->once();
+        Actions\expectAdded('wp_ajax_'.Ajax::ACTION_TEST_CHANNEL)->once();
+        Actions\expectAdded('wp_ajax_'.Ajax::ACTION_ROTATE_CHANNEL_SECRET)->once();
         Actions\expectAdded('wp_ajax_nopriv_'.Ajax::ACTION)->never();
         Actions\expectAdded('wp_ajax_nopriv_'.Ajax::ACTION_MAP_EVENT)->never();
         Actions\expectAdded('wp_ajax_nopriv_'.Ajax::ACTION_CREATE_EVENT)->never();
+        Actions\expectAdded('wp_ajax_nopriv_'.Ajax::ACTION_TEST_CHANNEL)->never();
+        Actions\expectAdded('wp_ajax_nopriv_'.Ajax::ACTION_ROTATE_CHANNEL_SECRET)->never();
 
         (new Ajax($this->resolverWithToken(), $this->throwingFactory()))->register();
 
-        $this->addToAssertionCount(6);
+        $this->addToAssertionCount(10);
     }
 
     public function test_rejects_a_stale_nonce_without_touching_the_api(): void
@@ -143,6 +148,20 @@ final class AjaxTest extends TestCase
         self::assertSame('Paused', $response->data['status_label']);
         self::assertFalse($response->data['snoozed']);
         self::assertSame('', $response->data['snoozed_until']);
+    }
+
+    public function test_lifecycle_payload_passes_an_unknown_status_through_verbatim(): void
+    {
+        $this->authorised();
+        $_POST = ['op' => 'resume', 'uuid' => self::UUID];
+
+        $factory = $this->factoryReturning($this->monitorWire('quarantined', null));
+        $response = $this->captureHandle(new Ajax($this->resolverWithToken(), $factory));
+
+        self::assertTrue($response->success);
+        self::assertIsArray($response->data);
+        self::assertSame('quarantined', $response->data['status']);
+        self::assertSame('quarantined', $response->data['status_label']);
     }
 
     public function test_snooze_returns_the_snooze_deadline(): void
@@ -368,6 +387,223 @@ final class AjaxTest extends TestCase
         self::assertSame(409, $response->statusCode);
     }
 
+    /**
+     * @return array<string, array{\Closure(Ajax): void}>
+     */
+    public static function channelHandlers(): array
+    {
+        return [
+            'test channel' => [static fn (Ajax $ajax) => $ajax->handleTestChannel()],
+            'rotate channel secret' => [static fn (Ajax $ajax) => $ajax->handleRotateChannelSecret()],
+        ];
+    }
+
+    #[DataProvider('channelHandlers')]
+    public function test_channel_handler_rejects_a_stale_nonce_without_touching_the_api(\Closure $handle): void
+    {
+        Functions\when('check_ajax_referer')->justReturn(false);
+        Functions\when('current_user_can')->justReturn(true);
+        $_POST = ['channel_id' => '7'];
+
+        $response = $this->captureCall($handle, $this->resolverWithToken(), $this->throwingFactory());
+
+        self::assertFalse($response->success);
+        self::assertSame(403, $response->statusCode);
+    }
+
+    #[DataProvider('channelHandlers')]
+    public function test_channel_handler_rejects_a_non_administrator_without_touching_the_api(\Closure $handle): void
+    {
+        Functions\when('check_ajax_referer')->justReturn(1);
+        Functions\when('current_user_can')->justReturn(false);
+        $_POST = ['channel_id' => '7'];
+
+        $response = $this->captureCall($handle, $this->resolverWithToken(), $this->throwingFactory());
+
+        self::assertFalse($response->success);
+        self::assertSame(403, $response->statusCode);
+    }
+
+    #[DataProvider('channelHandlers')]
+    public function test_channel_handler_rejects_when_no_token_is_configured(\Closure $handle): void
+    {
+        $this->authorised();
+        $_POST = ['channel_id' => '7'];
+
+        $response = $this->captureCall($handle, $this->resolverWithoutToken(), $this->throwingFactory());
+
+        self::assertFalse($response->success);
+        self::assertSame(400, $response->statusCode);
+    }
+
+    public function test_test_channel_rejects_an_invalid_channel_id_without_touching_the_api(): void
+    {
+        $this->authorised();
+        $_POST = ['channel_id' => '0'];
+
+        $response = $this->captureCall(static fn (Ajax $ajax) => $ajax->handleTestChannel(), $this->resolverWithToken(), $this->throwingFactory());
+
+        self::assertFalse($response->success);
+        self::assertSame(400, $response->statusCode);
+    }
+
+    public function test_test_channel_delivers_and_reports_newly_verified(): void
+    {
+        $this->authorised();
+        $_POST = ['channel_id' => '7'];
+
+        $response = $this->captureCall(
+            static fn (Ajax $ajax) => $ajax->handleTestChannel(),
+            $this->resolverWithToken(),
+            $this->factoryReturningTestResult(true, true, true),
+        );
+
+        self::assertTrue($response->success);
+        self::assertIsArray($response->data);
+        self::assertSame('7', $response->data['channel_id']);
+        self::assertTrue($response->data['delivered']);
+        self::assertTrue($response->data['newly_verified']);
+        self::assertTrue($response->data['verified']);
+    }
+
+    public function test_test_channel_maps_an_unverified_channel_to_a_422_json_error(): void
+    {
+        $this->authorised();
+        $_POST = ['channel_id' => '7'];
+
+        $factory = $this->factoryFailingWith(new Response(422, ['Content-Type' => 'application/problem+json'], '{"title":"Unprocessable","status":422,"errors":{"channel":"not verified"}}'));
+        $response = $this->captureCall(static fn (Ajax $ajax) => $ajax->handleTestChannel(), $this->resolverWithToken(), $factory);
+
+        self::assertFalse($response->success);
+        self::assertSame(422, $response->statusCode);
+        self::assertIsArray($response->data);
+        self::assertArrayHasKey('message', $response->data);
+    }
+
+    public function test_test_channel_maps_a_delivery_failure_to_a_502_json_error(): void
+    {
+        $this->authorised();
+        $_POST = ['channel_id' => '7'];
+
+        $factory = $this->factoryFailingWith(new Response(502, ['Content-Type' => 'application/problem+json'], '{"title":"Bad Gateway","status":502}'));
+        $response = $this->captureCall(static fn (Ajax $ajax) => $ajax->handleTestChannel(), $this->resolverWithToken(), $factory);
+
+        self::assertFalse($response->success);
+        self::assertSame(502, $response->statusCode);
+        self::assertIsArray($response->data);
+        self::assertIsString($response->data['message']);
+        self::assertStringContainsString('the destination rejected or failed the delivery', $response->data['message']);
+    }
+
+    public function test_test_channel_maps_any_other_server_error_to_the_generic_message(): void
+    {
+        $this->authorised();
+        $_POST = ['channel_id' => '7'];
+
+        $factory = $this->factoryFailingWith(new Response(500, ['Content-Type' => 'application/problem+json'], '{"title":"Server Error","status":500}'));
+        $response = $this->captureCall(static fn (Ajax $ajax) => $ajax->handleTestChannel(), $this->resolverWithToken(), $factory);
+
+        self::assertSame(502, $response->statusCode);
+        self::assertIsArray($response->data);
+        self::assertSame('cronheart.com could not send the test alert. Please try again.', $response->data['message']);
+    }
+
+    public function test_rotate_channel_secret_returns_the_once_only_plaintext(): void
+    {
+        $this->authorised();
+        $_POST = ['channel_id' => '7'];
+
+        $response = $this->captureCall(
+            static fn (Ajax $ajax) => $ajax->handleRotateChannelSecret(),
+            $this->resolverWithToken(),
+            $this->factoryReturningSecret('whsec_rotated_plaintext'),
+        );
+
+        self::assertTrue($response->success);
+        self::assertIsArray($response->data);
+        self::assertSame('7', $response->data['channel_id']);
+        self::assertSame('whsec_rotated_plaintext', $response->data['secret']);
+    }
+
+    public function test_rotate_channel_secret_rejects_an_invalid_channel_id_without_touching_the_api(): void
+    {
+        $this->authorised();
+        $_POST = ['channel_id' => 'not-a-number'];
+
+        $response = $this->captureCall(static fn (Ajax $ajax) => $ajax->handleRotateChannelSecret(), $this->resolverWithToken(), $this->throwingFactory());
+
+        self::assertFalse($response->success);
+        self::assertSame(400, $response->statusCode);
+    }
+
+    public function test_rotate_channel_secret_maps_a_non_webhook_channel_to_a_422_json_error(): void
+    {
+        $this->authorised();
+        $_POST = ['channel_id' => '7'];
+
+        $factory = $this->factoryFailingWith(new Response(422, ['Content-Type' => 'application/problem+json'], '{"title":"Unprocessable","status":422}'));
+        $response = $this->captureCall(static fn (Ajax $ajax) => $ajax->handleRotateChannelSecret(), $this->resolverWithToken(), $factory);
+
+        self::assertFalse($response->success);
+        self::assertSame(422, $response->statusCode);
+    }
+
+    /**
+     * @return array<string, array{int}>
+     */
+    public static function refusedRotations(): array
+    {
+        return ['unauthenticated' => [401], 'forbidden' => [403], 'channel not found' => [404]];
+    }
+
+    #[DataProvider('refusedRotations')]
+    public function test_rotate_channel_secret_reports_a_refusal_as_not_rotated(int $status): void
+    {
+        $this->authorised();
+        $_POST = ['channel_id' => '7'];
+
+        $factory = $this->factoryFailingWith(new Response($status, ['Content-Type' => 'application/problem+json'], '{"title":"Refused","status":'.$status.'}'));
+        $response = $this->captureCall(static fn (Ajax $ajax) => $ajax->handleRotateChannelSecret(), $this->resolverWithToken(), $factory);
+
+        self::assertFalse($response->success);
+        self::assertSame(502, $response->statusCode);
+        self::assertIsArray($response->data);
+        self::assertIsString($response->data['message']);
+        self::assertStringContainsString('the signing secret was not rotated', $response->data['message']);
+    }
+
+    public function test_rotate_channel_secret_reports_an_unbuildable_client_as_not_rotated(): void
+    {
+        $this->authorised();
+        $_POST = ['channel_id' => '7'];
+
+        $factory = static function (string $token): never {
+            throw new \RuntimeException('The Cronheart API endpoint is misconfigured.');
+        };
+        $response = $this->captureCall(static fn (Ajax $ajax) => $ajax->handleRotateChannelSecret(), $this->resolverWithToken(), $factory);
+
+        self::assertFalse($response->success);
+        self::assertSame(502, $response->statusCode);
+        self::assertIsArray($response->data);
+        self::assertIsString($response->data['message']);
+        self::assertStringContainsString('The signing secret was not rotated', $response->data['message']);
+    }
+
+    public function test_rotate_channel_secret_warns_that_an_unconfirmed_rotation_may_have_happened(): void
+    {
+        $this->authorised();
+        $_POST = ['channel_id' => '7'];
+
+        $factory = $this->factoryFailingWith(new Response(500, ['Content-Type' => 'application/problem+json'], '{"title":"Server Error","status":500}'));
+        $response = $this->captureCall(static fn (Ajax $ajax) => $ajax->handleRotateChannelSecret(), $this->resolverWithToken(), $factory);
+
+        self::assertFalse($response->success);
+        self::assertSame(502, $response->statusCode);
+        self::assertIsArray($response->data);
+        self::assertIsString($response->data['message']);
+        self::assertStringContainsString('may already be invalid', $response->data['message']);
+    }
+
     private function authorised(): void
     {
         Functions\when('check_ajax_referer')->justReturn(1);
@@ -476,6 +712,58 @@ final class AjaxTest extends TestCase
 
             return new ManagementClient($configuration, new MonitorApiClient($configuration, $http, $factory, $factory));
         };
+    }
+
+    /**
+     * @return \Closure(string): ManagementClient
+     */
+    private function factoryReturningTestResult(bool $delivered, bool $newlyVerified, bool $verified): \Closure
+    {
+        return $this->jsonFactory((string) json_encode([
+            'delivered' => $delivered,
+            'newly_verified' => $newlyVerified,
+            'channel' => $this->channelWire('7', 'email', 'On-call email', $verified),
+        ]));
+    }
+
+    /**
+     * @return \Closure(string): ManagementClient
+     */
+    private function factoryReturningSecret(string $secret): \Closure
+    {
+        $wire = $this->channelWire('7', 'webhook', 'Ops webhook', true);
+        $wire['secret'] = $secret;
+
+        return $this->jsonFactory((string) json_encode($wire));
+    }
+
+    /**
+     * @return \Closure(string): ManagementClient
+     */
+    private function jsonFactory(string $json): \Closure
+    {
+        return static function (string $token) use ($json): ManagementClient {
+            $factory = new Psr17Factory();
+            $configuration = new Configuration('https://cronheart.com', apiKey: 'cmk_test_token');
+            $http = new FakeHttpClient([new Response(200, ['Content-Type' => 'application/json'], $json)]);
+
+            return new ManagementClient($configuration, new MonitorApiClient($configuration, $http, $factory, $factory));
+        };
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function channelWire(string $id, string $kind, string $label, bool $verified): array
+    {
+        return [
+            'id' => $id,
+            'kind' => $kind,
+            'label' => $label,
+            'verified' => $verified,
+            'config' => [],
+            'created_at' => '2026-01-01T00:00:00+00:00',
+        ];
     }
 
     /**

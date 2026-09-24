@@ -16,6 +16,7 @@ use Cronheart\WP\Tests\Support\FakeHttpClient;
 use CronMonitor\Api\Dto\Monitor;
 use CronMonitor\Api\Dto\MonitorStatus;
 use CronMonitor\Api\Dto\ScheduleKind;
+use CronMonitor\Api\Dto\Vocabulary;
 use CronMonitor\Api\Exception\ApiTransportException;
 use CronMonitor\Api\Exception\AuthenticationException;
 use CronMonitor\Api\Exception\PlanRestrictionException;
@@ -658,6 +659,44 @@ final class SettingsPageTest extends TestCase
         self::assertStringContainsString('Nightly reports — Up — '.self::VALID_UUID, $html);
     }
 
+    public function test_an_unknown_monitor_status_renders_verbatim_in_the_picker_and_the_table(): void
+    {
+        Functions\when('__')->returnArg();
+        Functions\when('esc_html__')->returnArg();
+        Functions\when('esc_html')->returnArg();
+        Functions\when('esc_attr')->returnArg();
+        Functions\when('esc_attr__')->returnArg();
+        Functions\when('esc_url')->returnArg();
+        Functions\when('admin_url')->returnArg();
+        Functions\when('get_option')->justReturn('');
+        Functions\when('current_user_can')->justReturn(true);
+        Functions\when('settings_fields')->justReturn(null);
+        Functions\when('do_settings_sections')->justReturn(null);
+        Functions\when('submit_button')->justReturn(null);
+        Functions\when('selected')->alias(
+            static fn ($a, $b = true, $echo = true): string => (string) $a === (string) $b ? " selected='selected'" : ''
+        );
+
+        $monitors = [$this->makeMonitor(self::VALID_UUID, 'Nightly reports', 'quarantined')];
+
+        $page = $this->buildPage(
+            $this->resolverWithApiToken('cmk_'.str_repeat('a', 43)),
+            $this->factoryReturning($monitors),
+        );
+
+        ob_start();
+        $page->render_heartbeat_field();
+        $picker = (string) ob_get_clean();
+
+        ob_start();
+        $page->render();
+        $html = (string) ob_get_clean();
+
+        self::assertStringContainsString('Nightly reports — quarantined — '.self::VALID_UUID, $picker);
+        self::assertStringContainsString('data-cronheart-status="quarantined"', $html);
+        self::assertStringContainsString('<td class="cronheart-monitor-status">quarantined</td>', $html);
+    }
+
     public function test_render_lists_account_monitors_with_lifecycle_actions(): void
     {
         Functions\when('__')->returnArg();
@@ -858,11 +897,11 @@ final class SettingsPageTest extends TestCase
         return [
             'uuid' => $monitor->uuid,
             'name' => $monitor->name,
-            'schedule_kind' => $monitor->scheduleKind->value,
+            'schedule_kind' => Vocabulary::value($monitor->scheduleKind),
             'schedule_expr' => $monitor->scheduleExpr,
             'tz' => $monitor->tz,
             'grace_seconds' => $monitor->graceSeconds,
-            'status' => $monitor->status->value,
+            'status' => Vocabulary::value($monitor->status),
             'next_expected_at' => $monitor->nextExpectedAt?->format(\DATE_ATOM),
             'last_ping_at' => $monitor->lastPingAt?->format(\DATE_ATOM),
             'created_at' => $monitor->createdAt->format(\DATE_ATOM),
@@ -885,7 +924,7 @@ final class SettingsPageTest extends TestCase
         );
     }
 
-    private function makeMonitor(string $uuid, string $name): Monitor
+    private function makeMonitor(string $uuid, string $name, MonitorStatus|string $status = MonitorStatus::Up): Monitor
     {
         return new Monitor(
             $uuid,
@@ -894,7 +933,7 @@ final class SettingsPageTest extends TestCase
             '300',
             'UTC',
             60,
-            MonitorStatus::Up,
+            $status,
             null,
             null,
             new \DateTimeImmutable('2026-01-01T00:00:00+00:00'),

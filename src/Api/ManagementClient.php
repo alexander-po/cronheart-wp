@@ -5,10 +5,15 @@ declare(strict_types=1);
 namespace Cronheart\WP\Api;
 
 use CronMonitor\Api\Dto\Account;
+use CronMonitor\Api\Dto\AlertPage;
+use CronMonitor\Api\Dto\Channel;
+use CronMonitor\Api\Dto\ChannelSecret;
 use CronMonitor\Api\Dto\CreateMonitorRequest;
 use CronMonitor\Api\Dto\Monitor;
+use CronMonitor\Api\Dto\PingPage;
 use CronMonitor\Api\Dto\ScheduleKind;
 use CronMonitor\Api\Dto\SnoozeDuration;
+use CronMonitor\Api\Dto\TestChannelResult;
 use CronMonitor\Api\MonitorApiClient;
 use CronMonitor\Client\Configuration;
 
@@ -164,6 +169,77 @@ final class ManagementClient
         );
 
         return $this->client()->createMonitor($request, $idempotencyKey);
+    }
+
+    /**
+     * The account's notification channels for the channels screen. The
+     * channels endpoint returns the full set in one response (no pagination),
+     * so this hands back the bare list. Channel ids are strings (the backend's
+     * BIGINT carried verbatim) — pass them straight back to {@see testChannel}
+     * / {@see rotateChannelSecret}, never cast to int. Sends only the token.
+     *
+     * @return list<Channel>
+     *
+     * @throws \CronMonitor\Api\Exception\ApiException
+     */
+    public function listChannels(): array
+    {
+        return $this->client()->listChannels()->data;
+    }
+
+    /**
+     * Send a test alert through a channel — a real outbound delivery, and the
+     * only channel call with a side effect off cronheart.com. Returns whether
+     * it was delivered (and whether that delivery newly verified the channel).
+     * A downstream destination that rejects the delivery answers `502` (the
+     * SDK's {@see \CronMonitor\Api\Exception\ChannelDeliveryException}); an
+     * unverified or transport-less channel answers `422`
+     * ({@see \CronMonitor\Api\Exception\ValidationException}). Never retried.
+     *
+     * @throws \CronMonitor\Api\Exception\ApiException
+     */
+    public function testChannel(string $id): TestChannelResult
+    {
+        return $this->client()->testChannel($id);
+    }
+
+    /**
+     * Rotate a webhook channel's signing secret, returning the channel plus
+     * the freshly-minted plaintext secret the backend reveals **once**. The
+     * caller must surface that plaintext immediately and never persist it. Only
+     * webhook channels have a rotatable secret; any other kind answers `422`.
+     * Never retried (a replay would mint a second secret and lose the first).
+     *
+     * @throws \CronMonitor\Api\Exception\ApiException
+     */
+    public function rotateChannelSecret(string $id): ChannelSecret
+    {
+        return $this->client()->rotateChannelSecret($id);
+    }
+
+    /**
+     * The first page of a monitor's ping history (newest first), capped at
+     * $limit. Pings are cursor-paginated; the admin history dashboard reads
+     * only this first page and never walks the full history, so no cursor is
+     * threaded through.
+     *
+     * @throws \CronMonitor\Api\Exception\ApiException
+     */
+    public function listPings(string $uuid, int $limit = 50): PingPage
+    {
+        return $this->client()->listPings($uuid, $limit);
+    }
+
+    /**
+     * The first page of a monitor's alert history (newest first), capped at
+     * $limit. Offset-paginated; like {@see listPings} the dashboard reads only
+     * the first page (offset 0).
+     *
+     * @throws \CronMonitor\Api\Exception\ApiException
+     */
+    public function listAlerts(string $uuid, int $limit = 50): AlertPage
+    {
+        return $this->client()->listAlerts($uuid, 0, $limit);
     }
 
     private function client(): MonitorApiClient

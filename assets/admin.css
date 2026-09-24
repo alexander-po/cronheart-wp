@@ -1,4 +1,4 @@
-/* Cronheart admin styling — Settings → Cronheart only. */
+/* Cronheart admin styling — the Cronheart settings, events and channels screens. */
 
 .cronheart-account-card {
 	margin: 1em 0;
@@ -38,4 +38,31 @@
 	margin-left: 0.5em;
 	color: #646970;
 	font-style: italic;
+}
+
+.cronheart-channels {
+	margin-top: 0.5em;
+}
+
+.cronheart-channel-test,
+.cronheart-channel-rotate {
+	margin-right: 0.25em;
+}
+
+.cronheart-channel-feedback {
+	margin-left: 0.5em;
+	color: #646970;
+	font-style: italic;
+}
+
+.cronheart-channel-secret {
+	margin-top: 0.5em;
+}
+
+.cronheart-channel-secret-value {
+	display: inline-block;
+	padding: 0.2em 0.4em;
+	background: #f6f7f7;
+	border: 1px solid #c3c4c7;
+	word-break: break-all;
 }
