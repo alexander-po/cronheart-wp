@@ -70,7 +70,7 @@ The plugin wraps the [`cron-monitor/php-sdk`](https://github.com/alexander-po/cr
 2. Sign up at [cronheart.com](https://cronheart.com) and create a monitor for your site's heartbeat. Copy the monitor UUID from the dashboard.
 3. Configure the UUID. Either add it to `wp-config.php` with `define( 'CRONHEART_HEARTBEAT_UUID', 'xxxxxxxx-…' );` (recommended), or paste it under **Settings → Cronheart** in the WP admin.
 4. Done. Within five minutes you should see the first `heartbeat` ping on the cronheart dashboard.
-5. *(Optional)* To choose a monitor from a dropdown instead of pasting its UUID, create a Personal Access Token at cronheart.com (**Settings → API Tokens**) and save it under **Settings → Cronheart**. API access requires a Starter plan or higher; the plugin works fully on the free tier without a token. For production, prefer `define( 'CRONHEART_API_TOKEN', 'cmk_…' );` in `wp-config.php` to keep the account credential out of the database.
+5. *(Optional)* To choose a monitor from a dropdown instead of pasting its UUID, create a Personal Access Token at cronheart.com (**Account → API tokens**) and save it under **Settings → Cronheart**. Every plan, the free one included, can use the API; the account email must be verified before a token can be created. The plugin works fully without a token. For production, prefer `define( 'CRONHEART_API_TOKEN', 'cmk_…' );` in `wp-config.php` to keep the account credential out of the database.
 
 For per-event monitoring (a specific scheduled hook, not just the site heartbeat), register the hook from a plugin / theme / mu-plugin:
 
@@ -92,11 +92,11 @@ The plugin will retry once (built-in retry budget) and then log a warning to `de
 
 = Do I need a paid cronheart.com account? =
 
-No. Cronheart's free tier covers 20 monitors per account — enough for a typical site's heartbeat plus several per-event monitors. Every tier, the free one included, gets all notification channels (email, Telegram, Slack, Discord and signed webhooks). Paid tiers (Starter / Growth / Scale) raise the monitor cap and add REST API access, which the optional token features in wp-admin use.
+No. Cronheart's free tier covers 20 monitors per account — enough for a typical site's heartbeat plus several per-event monitors. Every tier, the free one included, gets all notification channels (email, Telegram, Slack, Discord and signed webhooks). The REST API, which the optional token features in wp-admin use, is included on every tier, the free one too. Paid tiers (Starter / Growth / Scale) raise the monitor cap and the API rate limit.
 
 = Do I need an API token? =
 
-No — it is entirely optional. Paste a monitor UUID under Settings → Cronheart (or define it in `wp-config.php`) and the plugin works on any plan, including the free tier. A token only adds convenience: the settings page can then list your monitors and let you pick one from a dropdown instead of copying a UUID by hand. The token is an account-level credential, so for production prefer defining `CRONHEART_API_TOKEN` in `wp-config.php` over storing it in the database. The picker (API access) requires a Starter plan or higher; if your plan does not include it the page shows a notice and falls back to manual UUID entry.
+No — it is entirely optional. Paste a monitor UUID under Settings → Cronheart (or define it in `wp-config.php`) and the plugin works on any plan, including the free tier. A token only adds convenience: the settings page can then list your monitors and let you pick one from a dropdown instead of copying a UUID by hand. The token is an account-level credential, so for production prefer defining `CRONHEART_API_TOKEN` in `wp-config.php` over storing it in the database. The token features work on every plan, the free one included, but cronheart.com only lets an account with a verified email address create a token. If the token is refused or cronheart.com cannot be reached, the page shows a notice and falls back to manual UUID entry.
 
 = Where do I find my monitor UUID? =
 
@@ -136,7 +136,7 @@ Open an issue on [GitHub](https://github.com/alexander-po/cronheart-wp/issues).
 * A monitor status, ping kind or alert kind this version does not recognise yet is now shown as-is on the admin screens instead of failing the whole listing.
 * The API token is now sent only over HTTPS. With a plain `http://` endpoint the management screens fall back to manual UUID entry; pings keep working.
 * Tested up to WordPress 7.1.
-* Corrected the FAQ: notification channels are available on every cronheart.com plan, including the free one; paid plans add the REST API access the token features use.
+* Corrected the FAQ: notification channels are available on every cronheart.com plan, including the free one.
 * Corrected the description of the Cronheart Events screen: an assignment made there overrides the `cronheart_monitor()` helper, and only a `CRONHEART_EVENT_<HOOK>_UUID` constant overrides the assignment. Earlier notes said the helper took precedence.
 * The "External services" disclosure now also covers the channel reads / test / rotate-secret calls and the history reads — including that "Send test" sends a real notification to the channel's destination.
 

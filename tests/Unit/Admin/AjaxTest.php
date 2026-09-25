@@ -194,6 +194,20 @@ final class AjaxTest extends TestCase
         self::assertArrayHasKey('message', $response->data);
     }
 
+    public function test_a_plan_refusal_message_does_not_tie_the_api_to_a_paid_plan(): void
+    {
+        $this->authorised();
+        $_POST = ['op' => 'pause', 'uuid' => self::UUID];
+
+        $factory = $this->factoryFailingWith(new Response(402, ['Content-Type' => 'application/problem+json'], '{"title":"Payment Required","status":402}'));
+        $response = $this->captureHandle(new Ajax($this->resolverWithToken(), $factory));
+
+        self::assertFalse($response->success);
+        self::assertSame(402, $response->statusCode);
+        self::assertIsArray($response->data);
+        self::assertSame('Your cronheart.com plan does not allow this action.', $response->data['message']);
+    }
+
     public function test_map_event_assigns_a_monitor_and_writes_the_event_map(): void
     {
         $this->authorised();

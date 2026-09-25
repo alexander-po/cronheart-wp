@@ -203,7 +203,7 @@ final class ChannelsScreen
         try {
             return array_values(($this->managementClientFactory)($token)->listChannels());
         } catch (PlanRestrictionException) {
-            $this->channelsNotice = __('Your cronheart.com plan does not include API access, so channels cannot be listed here.', 'cronheart');
+            $this->channelsNotice = __('Your cronheart.com plan does not allow this request, so channels cannot be listed here.', 'cronheart');
         } catch (AuthenticationException) {
             $this->channelsNotice = __('Could not authenticate with cronheart.com — check the API token on the Cronheart settings page.', 'cronheart');
         } catch (RateLimitException) {

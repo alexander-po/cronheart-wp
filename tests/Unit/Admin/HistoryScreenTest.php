@@ -188,6 +188,20 @@ final class HistoryScreenTest extends TestCase
         self::assertStringNotContainsString('Recent pings', $html, 'no table when the history failed to load');
     }
 
+    public function test_render_a_plan_refusal_notice_does_not_tie_the_api_to_a_paid_plan(): void
+    {
+        Functions\when('current_user_can')->justReturn(true);
+
+        $http = new FakeHttpClient([
+            new Response(402, ['Content-Type' => 'application/problem+json'], '{"title":"Payment Required","status":402}'),
+        ]);
+        $html = $this->renderScreen($this->resolverWithToken(), $this->factoryWith($http, 0));
+
+        self::assertStringContainsString('does not allow this request', $html);
+        self::assertStringNotContainsString('API access', $html);
+        self::assertStringNotContainsString('Starter', $html);
+    }
+
     public function test_render_aborts_without_capability(): void
     {
         Functions\when('current_user_can')->justReturn(false);

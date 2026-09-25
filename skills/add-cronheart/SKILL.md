@@ -56,7 +56,7 @@ Pick the configuration path with the operator:
 
    Each registered hook then sends `start` and `success`, or `fail` on an exception; a PHP fatal inside the callback still produces the `fail` ping with the error summary.
 
-5. **Connect a Personal Access Token** (optional; it enables the admin screens). Create it at cronheart.com under **Settings → API Tokens** (`https://cronheart.com/account/api-tokens`); it starts with `cmk_`. It is an account-level, write-capable credential, so prefer the constant:
+5. **Connect a Personal Access Token** (optional; it enables the admin screens). Create it at cronheart.com under **Account → API tokens** (`https://cronheart.com/account/api-tokens`); it starts with `cmk_`. It is an account-level, write-capable credential, so prefer the constant:
    ```php
    define( 'CRONHEART_API_TOKEN', getenv( 'CRONHEART_API_TOKEN' ) ?: '' );
    ```
@@ -64,7 +64,7 @@ Pick the configuration path with the operator:
 
    It unlocks, on Settings → Cronheart, the monitor picker and the account card with a "Your monitors" table (pause, resume, snooze); on Settings → Cronheart Events, assign and *Auto-create & assign*; and, from plugin 0.5.0, Settings → Cronheart Channels (list channels, send a test notification, rotate a webhook secret) and Settings → Cronheart History (a monitor's recent pings and alerts).
 
-   Plan: which plans include the REST API behind the token, and at what per-minute rate, is cronheart.com's own decision and changes independently of this plugin's release cycle — check the current answer at `https://cronheart.com/pricing` rather than trusting a number here. This plugin's own `readme.txt` and in-app copy may lag a recent pricing change by a release or two; if the token page shows an upgrade prompt instead of a create form, or a Cronheart screen shows a notice that the account's plan does not include API access, that account's plan does not currently include it. Either way steps 1–4 above need no token: the plugin works fully on UUIDs pasted by hand, on any plan including Free.
+   Plan: every plan, the Free plan included, has the REST API behind the token; the per-minute rate grows with the plan, and the current numbers are on `https://cronheart.com/pricing` rather than here. Creating a token needs a verified email address on the account: if the token page shows a notice to verify the email instead of a create form, verify the address first. Plugin releases up to 0.5.0 still carry older copy that ties the API to a paid plan (an intro line saying API access needs Starter, or a notice that the plan does not include API access); that copy is out of date and does not mean the account lacks the API. Either way steps 1–4 above need no token: the plugin works fully on UUIDs pasted by hand, on any plan including Free.
 
 6. **Move WP-Cron onto a system cron.** Page-load WP-Cron runs only when someone visits, so on a quiet or fully cached site the heartbeat arrives late and cronheart alerts; that alert is the finding, and the fix is a real cron. In `wp-config.php`:
    ```php

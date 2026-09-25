@@ -115,7 +115,7 @@ final class HistoryScreen
             $client = ($this->managementClientFactory)($token);
             $monitors = array_values($client->listMonitors());
         } catch (PlanRestrictionException) {
-            $this->renderNotice(__('Your cronheart.com plan does not include API access, so history cannot be loaded here.', 'cronheart'));
+            $this->renderNotice(__('Your cronheart.com plan does not allow this request, so history cannot be loaded here.', 'cronheart'));
 
             return;
         } catch (AuthenticationException) {

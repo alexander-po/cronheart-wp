@@ -286,7 +286,7 @@ final class SettingsPage
     public function render_api_intro(): void
     {
         echo '<p>'.esc_html__(
-            'Connect your cronheart.com account with a Personal Access Token to pick a monitor from a list instead of pasting its UUID by hand. Create a token at cronheart.com under Settings → API Tokens. API access requires a Starter plan or higher.',
+            'Connect your cronheart.com account with a Personal Access Token to pick a monitor from a list instead of pasting its UUID by hand. Create a token at cronheart.com under Account → API tokens. Every plan, the free one included, can use the API; your account email must be verified before you can create a token.',
             'cronheart'
         ).'</p>';
 
@@ -383,7 +383,7 @@ final class SettingsPage
         printf(
             '<li>%s</li>',
             esc_html(\sprintf(
-                /* translators: %s: the cronheart.com plan name (for example, Starter). */
+                /* translators: %s: the cronheart.com plan name (for example, Free). */
                 __('Plan: %s', 'cronheart'),
                 $account->plan->label
             ))
@@ -454,7 +454,7 @@ final class SettingsPage
             $this->apiMonitors = array_values($client->listMonitors());
         } catch (PlanRestrictionException $e) {
             $this->apiUpgradeUrl = $e->upgradeUrl;
-            $this->apiError = __('Your cronheart.com plan does not include API access. Upgrade to Starter or higher to pick monitors from a list — you can still paste a monitor UUID below.', 'cronheart');
+            $this->apiError = __('Your cronheart.com plan does not allow this request, so monitors cannot be listed here. You can still paste a monitor UUID below.', 'cronheart');
         } catch (AuthenticationException) {
             $this->apiError = __('Could not authenticate with cronheart.com — check that the API token is correct and still active. You can paste a monitor UUID manually below.', 'cronheart');
         } catch (RateLimitException) {
