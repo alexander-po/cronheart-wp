@@ -89,6 +89,17 @@ final class ChannelsScreenTest extends TestCase
         self::assertStringNotContainsString('cronheart-channels', $html, 'no table when the listing failed');
     }
 
+    public function test_render_a_plan_refusal_notice_does_not_tie_the_api_to_a_paid_plan(): void
+    {
+        Functions\when('current_user_can')->justReturn(true);
+
+        $html = $this->renderScreen($this->resolverWithToken(), $this->factoryFailingWith(402));
+
+        self::assertStringContainsString('does not allow this request', $html);
+        self::assertStringNotContainsString('API access', $html);
+        self::assertStringNotContainsString('Starter', $html);
+    }
+
     public function test_render_aborts_without_capability(): void
     {
         Functions\when('current_user_can')->justReturn(false);

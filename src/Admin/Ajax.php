@@ -222,7 +222,7 @@ final class Ajax
             $client = ($this->managementClientFactory)($token);
             $monitor = $this->dispatch($client, $op, $uuid, $duration);
         } catch (PlanRestrictionException) {
-            $this->fail(__('Your cronheart.com plan does not include API access.', 'cronheart'), 402);
+            $this->fail(__('Your cronheart.com plan does not allow this action.', 'cronheart'), 402);
 
             return;
         } catch (RateLimitException) {
@@ -361,7 +361,7 @@ final class Ajax
                 $blueprint->idempotencyKey,
             );
         } catch (PlanRestrictionException) {
-            $this->fail(__('Your cronheart.com plan does not include API access.', 'cronheart'), 402);
+            $this->fail(__('Your cronheart.com plan does not allow this action.', 'cronheart'), 402);
 
             return;
         } catch (RateLimitException) {
@@ -439,7 +439,7 @@ final class Ajax
             $client = ($this->managementClientFactory)($token);
             $result = $client->testChannel($channelId);
         } catch (PlanRestrictionException) {
-            $this->fail(__('Your cronheart.com plan does not include API access.', 'cronheart'), 402);
+            $this->fail(__('Your cronheart.com plan does not allow this action.', 'cronheart'), 402);
 
             return;
         } catch (RateLimitException) {
@@ -526,7 +526,7 @@ final class Ajax
         try {
             $secret = $client->rotateChannelSecret($channelId);
         } catch (PlanRestrictionException) {
-            $this->fail(__('Your cronheart.com plan does not include API access.', 'cronheart'), 402);
+            $this->fail(__('Your cronheart.com plan does not allow this action.', 'cronheart'), 402);
 
             return;
         } catch (RateLimitException) {

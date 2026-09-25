@@ -121,8 +121,9 @@ define( 'CRONHEART_ALLOW_INSECURE_ENDPOINT', true );
 
 // Optional: cronheart.com account API token (cmk_…) to enable the
 // monitor picker on the settings page. Account-level and write-capable,
-// so prefer this constant over storing it in the database. Requires a
-// Starter plan or higher; without it you simply pick monitors by UUID.
+// so prefer this constant over storing it in the database. Every plan,
+// the free one included, can use the API; the account email must be
+// verified to create a token. Without a token you pick monitors by UUID.
 define( 'CRONHEART_API_TOKEN', getenv( 'CRONHEART_API_TOKEN' ) ?: '' );
 ```
 

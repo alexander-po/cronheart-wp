@@ -10,6 +10,11 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 - `skills/add-cronheart/SKILL.md`, an agent-facing recipe (Claude Code skill frontmatter, numbered steps, placeholders only) for adding Cronheart to a WordPress site, with a three-line `AGENTS.md` at the repository root and a "For coding agents" section in `README.md`. Repository-only content: `bin/build-release.sh` strips `skills/` directories from vendored packages and refuses to build a zip that carries `AGENTS.md`, `CLAUDE.md` or `skills/` at the stage root.
 
+### Changed
+
+- Corrected copy that tied the REST API, the monitor picker or auto-create to a paid plan. cronheart.com includes the API on every plan, the Free plan included; the plan sets the rate limit and the monitor cap. The Settings → Cronheart introduction no longer says API access needs a Starter plan. The "does not include API access" notices on the settings, Events, Channels and History screens and in the admin-AJAX errors now say the plan does not allow the request, and an "Upgrade your plan" link still appears when cronheart.com sends an upgrade URL with a refusal. The `readme.txt` installation step and FAQ, the `README.md` `CRONHEART_API_TOKEN` note and the agent recipe drop the paid-plan claim too. The settings introduction, the `readme.txt` installation step and token FAQ, the `README.md` note and the agent recipe now say a token can only be created on an account with a verified email address, and the introduction, the installation step and the agent recipe name the token page as Account → API tokens. Wording only; no behaviour change.
+- Dropped the "paid plans add the REST API access" clause from the 0.5.0 FAQ-correction entry in `readme.txt`, because it is no longer true. The 0.5.0 entry in this file stays as tagged.
+
 ## [0.5.0] — 2026-09-25
 
 Two read/manage features on the existing `Api\ManagementClient` + admin-AJAX foundation, no new infrastructure: notification-channel management (list / test / rotate-secret) and a read-only ping & alert history dashboard. Channel **creation** is deferred. The never-throw runtime ping path (`Api\Client`) is untouched, and the write-capable `cmk_` token still leaves the site only from wp-admin: reads while an administrator has a Cronheart screen open, writes only on an explicit click.

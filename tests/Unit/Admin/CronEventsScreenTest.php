@@ -78,6 +78,24 @@ final class CronEventsScreenTest extends TestCase
         self::assertStringNotContainsString('cronheart-event-monitor', $html, 'a constant-governed hook has no dropdown');
     }
 
+    public function test_render_a_plan_refusal_notice_does_not_tie_the_api_to_a_paid_plan(): void
+    {
+        Functions\when('current_user_can')->justReturn(true);
+        $refusing = static function (string $token): ManagementClient {
+            $psr = new Psr17Factory();
+            $configuration = new Configuration('https://cronheart.com', apiKey: 'cmk_test_token', retries: 0);
+            $http = new FakeHttpClient([new Response(402, ['Content-Type' => 'application/problem+json'], '{"title":"Payment Required","status":402}')]);
+
+            return new ManagementClient($configuration, new MonitorApiClient($configuration, $http, $psr, $psr));
+        };
+
+        $html = $this->renderScreen($this->resolverWithToken(), $refusing);
+
+        self::assertStringContainsString('does not allow this request', $html);
+        self::assertStringNotContainsString('API access', $html);
+        self::assertStringNotContainsString('Starter', $html);
+    }
+
     public function test_render_aborts_without_capability(): void
     {
         Functions\when('current_user_can')->justReturn(false);

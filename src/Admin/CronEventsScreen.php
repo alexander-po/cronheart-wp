@@ -265,7 +265,7 @@ final class CronEventsScreen
         try {
             return array_values(($this->managementClientFactory)($token)->listMonitors());
         } catch (PlanRestrictionException) {
-            $this->monitorsNotice = __('Your cronheart.com plan does not include API access, so monitors cannot be listed here.', 'cronheart');
+            $this->monitorsNotice = __('Your cronheart.com plan does not allow this request, so monitors cannot be listed here.', 'cronheart');
         } catch (AuthenticationException) {
             $this->monitorsNotice = __('Could not authenticate with cronheart.com — check the API token on the Cronheart settings page.', 'cronheart');
         } catch (RateLimitException) {

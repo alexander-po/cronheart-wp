@@ -474,6 +474,24 @@ final class SettingsPageTest extends TestCase
         self::assertStringContainsString('notice-warning', $html);
         self::assertStringContainsString('Upgrade your plan', $html);
         self::assertStringContainsString('https://cronheart.com/billing/upgrade', $html);
+        self::assertStringContainsString('does not allow this request', $html);
+        self::assertStringNotContainsString('API access', $html);
+        self::assertStringNotContainsString('Starter', $html);
+    }
+
+    public function test_render_api_intro_says_every_plan_can_use_the_api_and_a_token_needs_a_verified_email(): void
+    {
+        Functions\when('__')->returnArg();
+        Functions\when('esc_html__')->returnArg();
+
+        ob_start();
+        $this->buildPage()->render_api_intro();
+        $html = (string) ob_get_clean();
+
+        self::assertStringContainsString('Every plan, the free one included, can use the API', $html);
+        self::assertStringContainsString('email must be verified', $html);
+        self::assertStringContainsString('Account → API tokens', $html);
+        self::assertStringNotContainsString('Starter', $html);
     }
 
     public function test_render_api_intro_handles_rate_limit_with_a_retry_notice(): void
