@@ -154,6 +154,20 @@ add_action( 'plugins_loaded', function () {
 > instead — at which point the **heartbeat** layer catches that the
 > WP-Cron run itself never completed.
 
+## For coding agents
+
+`skills/add-cronheart/SKILL.md` is a step-by-step recipe an AI coding
+agent (Claude Code, Cursor, Codex and the like) follows to add Cronheart
+to a WordPress site: install the plugin, attach the heartbeat monitor,
+add per-event monitors, connect a token for the admin screens, move
+WP-Cron onto a system cron and verify the first ping. It uses
+placeholders only — a real monitor UUID or API token never belongs in a
+repository. Copy the directory into your project's `.claude/skills/`, or
+point the agent at the file, and ask it to add Cronheart to the site.
+`AGENTS.md` at the repository root is the pointer agents read first.
+Neither ships in the WordPress.org zip: `bin/build-release.sh` strips
+`skills/` from vendored packages and refuses to package the root copies.
+
 ## Known limitations
 
 - **Vendor namespace prefixing is deferred.** Today the bundled SDK

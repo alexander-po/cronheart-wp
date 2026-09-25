@@ -283,6 +283,7 @@ The script:
    `composer.lock`, `src/`, `vendor/` into `build/cronheart/`.
 3. Strips from vendored packages: `tests/`, `test/`, `docs/`, `doc/`,
    `examples/`, `.github/`, **`bin/`** (Composer CLI shims),
+   **`skills/`** (agent recipes, see `AGENTS.md`),
    `phpunit.*`, `phpstan.*`, `.php-cs-fixer*`, `psalm.*`, `*.dist`,
    `.editorconfig`, `.gitignore`, `.gitattributes`, **`CLAUDE.md`**,
    **`AGENTS.md`**, `CONTRIBUTING.md`, `SECURITY.md`, `UPGRADING.md`,
@@ -304,7 +305,9 @@ Things explicitly stripped to dodge WP.org review nits:
 This top-level `CLAUDE.md` (the one you're reading) lives at the repo
 root, **not** inside `vendor/`, and `build-release.sh` only copies
 specific paths into the stage dir — so this file is safe from getting
-shipped in the zip. Do not add it to the copy list.
+shipped in the zip. Do not add it to the copy list. The script also
+refuses to zip when `AGENTS.md`, `CLAUDE.md` or `skills/` appear at the
+stage root, so a copy-list slip fails the build instead of shipping.
 
 ## Plugin Check pre-flight
 

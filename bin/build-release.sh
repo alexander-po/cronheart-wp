@@ -66,7 +66,7 @@ cp -R vendor "$STAGE_DIR/"
 # suites that could surprise users who poke around with grep.
 #
 # The agent-instruction / contributor-doc files (`CLAUDE.md`,
-# `AGENTS.md`, `CONTRIBUTING.md`, `SECURITY.md`, etc.) are stripped
+# `AGENTS.md`, `skills/`, `CONTRIBUTING.md`, `SECURITY.md`, etc.) are stripped
 # specifically because WordPress.org plugin reviewers may flag
 # stray AI-tooling notes inside a plugin zip as out-of-scope
 # bundling — those files target SDK contributors, not WP-plugin
@@ -81,9 +81,16 @@ cp -R vendor "$STAGE_DIR/"
 # flags `cronheart/vendor/bin/*` paths as "not permitted files",
 # so we strip them here. PSR-4 autoload of the SDK's classes is
 # unaffected.
-find "$STAGE_DIR/vendor" -type d \( -name tests -o -name test -o -name docs -o -name doc -o -name examples -o -name '.github' -o -name bin \) -exec rm -rf {} +
+find "$STAGE_DIR/vendor" -type d \( -name tests -o -name test -o -name docs -o -name doc -o -name examples -o -name '.github' -o -name bin -o -name skills \) -exec rm -rf {} +
 find "$STAGE_DIR/vendor" -type f \( -name 'phpunit.*' -o -name 'phpstan.*' -o -name '.php-cs-fixer*' -o -name 'psalm.*' -o -name '*.dist' -o -name '.editorconfig' -o -name '.gitignore' -o -name '.gitattributes' \) -delete
 find "$STAGE_DIR/vendor" -type f \( -name 'CLAUDE.md' -o -name 'AGENTS.md' -o -name 'CONTRIBUTING.md' -o -name 'SECURITY.md' -o -name 'UPGRADING.md' -o -name 'MAINTAINING.md' -o -name 'CODE_OF_CONDUCT.md' -o -name '.scrutinizer.yml' -o -name '.travis.yml' -o -name '.circleci' \) -delete
+
+for repository_only in AGENTS.md CLAUDE.md skills; do
+    if [ -e "$STAGE_DIR/$repository_only" ]; then
+        echo "Refusing to zip: $repository_only is repository-only content" >&2
+        exit 1
+    fi
+done
 
 # Wrap the staged tree in `cronheart/` so the zip extracts directly
 # into a `wp-content/plugins/cronheart/` directory.

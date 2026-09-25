@@ -6,7 +6,9 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-_Nothing yet — open a PR and add your entry under the appropriate subsection._
+### Added
+
+- `skills/add-cronheart/SKILL.md`, an agent-facing recipe (Claude Code skill frontmatter, numbered steps, placeholders only) for adding Cronheart to a WordPress site, with a three-line `AGENTS.md` at the repository root and a "For coding agents" section in `README.md`. Repository-only content: `bin/build-release.sh` strips `skills/` directories from vendored packages and refuses to build a zip that carries `AGENTS.md`, `CLAUDE.md` or `skills/` at the stage root.
 
 ## [0.5.0] — 2026-09-25
 
