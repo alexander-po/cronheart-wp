@@ -169,11 +169,11 @@ final class ResolverTest extends TestCase
     public function test_endpoint_constant_overrides_option_and_defaults(): void
     {
         $resolver = $this->buildResolver(
-            constants: [Resolver::ENDPOINT_CONSTANT => 'http://host.docker.internal:8081'],
+            constants: [Resolver::ENDPOINT_CONSTANT => 'http://host.docker.internal:8080'],
             options: [Resolver::ENDPOINT_OPTION => 'https://staging.cronheart.com'],
         );
 
-        self::assertSame('http://host.docker.internal:8081', $resolver->endpoint());
+        self::assertSame('http://host.docker.internal:8080', $resolver->endpoint());
     }
 
     public function test_endpoint_falls_back_to_option_when_constant_unset(): void

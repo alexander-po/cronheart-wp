@@ -1,24 +1,11 @@
 # Local end-to-end smoke stack for cronheart-wp.
 #
-# This base compose file works in **production-mode smoke**: WP + MySQL
-# come up and the plugin pings the real cronheart.com over the
-# internet. No backend network required.
+# On its own this compose file smokes against cronheart.com: WP + MySQL
+# come up and the plugin pings the real service over the internet.
 #
-# For **local-backend-mode smoke** (maintainers only — requires
-# checkout access to the closed-source `cron-monitor` repository),
-# layer the override file:
-#
-#     docker compose \
-#       -f devstack/docker-compose.yml \
-#       -f devstack/docker-compose.local.yml \
-#       up -d
-#
-# That override adds the `cronheart-backend` external network to the
-# WP / WP-CLI services so they can resolve the backend at the
-# internal hostname `http://app`.
-#
-# See README.md → "End-to-end smoke testing" for the full flow,
-# including the two monitors to create in the local backend.
+# For a smoke run against a backend on a local Docker network
+# (maintainers only), layer `docker-compose.local.yml` on top; see
+# README.md → "End-to-end smoke testing" for the full flow.
 
 services:
   wp-mysql:
@@ -42,8 +29,7 @@ services:
       wp-mysql:
         condition: service_healthy
     ports:
-      # Host port 8082 because cronheart backend (when present)
-      # already binds 8081.
+      # Host port 8082 to stay clear of other local stacks.
       - "8082:80"
     environment:
       WORDPRESS_DB_HOST: wp-mysql:3306

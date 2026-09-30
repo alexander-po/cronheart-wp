@@ -178,6 +178,16 @@ care about.
 ## Devstack — two modes
 
 `devstack/` carries a docker-compose harness for end-to-end smoke runs.
+Both modes run the same `devstack/smoke.sh`: it fires the heartbeat
+tick and a test per-event hook, and, when `CRONHEART_API_TOKEN` is set,
+reads both monitors' ping history through the public REST API
+(`GET /api/v1/monitors/<uuid>/pings`) before and after the run. It
+fails unless the heartbeat monitor gained a `heartbeat` ping and the
+per-event monitor a `start` and a `success`; pings on any other monitor
+cannot make it pass. The public repo never names the backend's schema,
+credentials or compose internals: everything backend-specific is an
+input (`CRONHEART_ENDPOINT`, `CRONHEART_BACKEND_NETWORK`, the UUIDs,
+the token).
 
 ### Mode A — production (public contributors)
 
@@ -185,47 +195,43 @@ Pings real `cronheart.com`. Public, doesn't require backend access.
 
 ```bash
 docker compose -f devstack/docker-compose.yml up -d
-HEARTBEAT_UUID=<from-cronheart-dashboard> \
-EVENT_UUID=<from-cronheart-dashboard> \
-./devstack/smoke.sh
+HEARTBEAT_UUID=<uuid> EVENT_UUID=<uuid> CRONHEART_API_TOKEN=<token> \
+    ./devstack/smoke.sh
 ```
 
-Verification is visual — check the cronheart.com dashboard for the
-incoming pings. No automated DB assertion.
+Without the token the script prints what to check on the dashboard
+instead of asserting. It refuses to send a token to a non-https
+endpoint unless `CRONHEART_ALLOW_INSECURE_TOKEN=1` is set.
 
 ### Mode B — local backend (maintainers only)
 
-Joins the cronheart-wp WordPress + wp-cli containers to the
-`cron-monitor` backend's Docker network, points the plugin at the local
-backend, runs the smoke, then **automatically asserts the three
-expected ping rows landed in the `pings` table**.
+Joins the WordPress + wp-cli containers to a backend's Docker network
+and points the plugin at it. Run the backend as an isolated compose
+project of its own, never the backend checkout's default project, so
+the run shares no database or network with other sessions, and create
+the two monitors and an API token on it first.
 
 ```bash
-# 1. Bring up the closed-source backend first (separate repo):
-cd ../cron-monitor && make up && cd -
-
-# 2. Bring up cronheart-wp devstack with the local overlay:
+export CRONHEART_BACKEND_NETWORK=<backend-docker-network>
 docker compose \
     -f devstack/docker-compose.yml \
     -f devstack/docker-compose.local.yml \
     up -d
-
-# 3. Run smoke in mode B with the UUIDs of two monitors created in
-#    the local backend (the script has no default UUIDs):
-CRONHEART_LOCAL_BACKEND=1 HEARTBEAT_UUID=<uuid> EVENT_UUID=<uuid> \
-    ./devstack/smoke.sh
+CRONHEART_ENDPOINT=<http://backend-host-on-that-network> \
+HEARTBEAT_UUID=<uuid> EVENT_UUID=<uuid> CRONHEART_API_TOKEN=<throwaway-token> \
+CRONHEART_ALLOW_INSECURE_TOKEN=1 ./devstack/smoke.sh
 ```
 
-Expected output ends with three ping rows
-(heartbeat / per-event start / per-event success) printed from the
-backend DB, plus `✓ All expected pings observed. Smoke run complete.`
+Expected output ends with the new pings of each monitor plus
+`✓ All expected pings observed. Smoke run complete.`
 
 **"End-to-end" means this.** A green `wp cron event run cronheart_heartbeat_tick`
 returning exit 0 only proves the hook didn't throw — the SDK swallows
 all network errors per the never-break-the-host-job contract, so the
 cron run will succeed even when the backend is unreachable, the UUID
 is fake, or the body is malformed. The only honest end-to-end signal
-is *rows appearing in the `pings` table*. Use mode B for that.
+is *the backend's ping history for the monitors under test gaining this
+run's pings*, which is what the token-driven check asserts.
 
 ## The WP-image trap
 
@@ -432,9 +438,10 @@ https://plugins.svn.wordpress.org/cronheart/
 └── assets/        ← icons, banners, screenshots — NOT shipped inside the plugin zip
 ```
 
-**Checkout location.** The local SVN working copy lives at
-`/Users/aliaksandrpazalok/projects/cronheart-svn/` (sibling to this
-git repo). Keep it around between releases — credentials are cached
+**Checkout location.** The local SVN working copy is a `cronheart-svn`
+directory next to the main clone of this repo (not next to a worktree
+under `.claude/worktrees/`); the recipes below take its path from
+`CRONHEART_SVN_DIR`. Keep it around between releases — credentials are cached
 in macOS Keychain after the first commit, and a fresh checkout pulls
 ~880 KB of history we'd be re-downloading each time.
 
@@ -455,15 +462,17 @@ explicitly, otherwise SVN tries to authenticate as the OS user.
 
 ### Shipping a release to SVN
 
-After git-side tag is pushed and `build/cronheart.zip` is fresh:
+After git-side tag is pushed and `build/cronheart.zip` is fresh, from
+the checkout that built it:
 
 ```bash
-cd /Users/aliaksandrpazalok/projects/cronheart-svn
+REPO=$PWD
+cd "${CRONHEART_SVN_DIR:?path to the cronheart-svn checkout}"
 svn up                                          # pick up anyone else's commits (rare for solo maintainer, but cheap)
 
 # 1) Refresh trunk with the new release contents.
 rm -rf trunk/*                                  # clean wipe — we copy the entire built tree
-cp -R /Users/aliaksandrpazalok/projects/cronheart-wp/build/cronheart/. trunk/
+cp -R "$REPO/build/cronheart/." trunk/
 svn add trunk/* --force                         # picks up new files, no-op for existing
 svn rm $(svn status | awk '/^!/ {print $2}' | xargs) 2>/dev/null || true   # remove files that disappeared between versions
 svn commit -m "Release vX.Y.Z"
@@ -515,8 +524,8 @@ PNG bytes.
 To deploy refreshed assets to WP.org:
 
 ```bash
-cp build/wp-org-assets/*.png /Users/aliaksandrpazalok/projects/cronheart-svn/assets/
-cd /Users/aliaksandrpazalok/projects/cronheart-svn
+cp build/wp-org-assets/*.png "${CRONHEART_SVN_DIR:?path to the cronheart-svn checkout}/assets/"
+cd "$CRONHEART_SVN_DIR"
 svn add assets/*.png --force
 svn commit -m "Refresh icon / banner"
 ```
@@ -552,10 +561,11 @@ For each new version bump:
    you don't have composer on the host PATH).
 6. Plugin Check in devstack: `wp plugin check cronheart` →
    `Success: Checks complete. No errors found.`
-7. **Real end-to-end smoke (mode B)**: `CRONHEART_LOCAL_BACKEND=1
-   HEARTBEAT_UUID=<uuid> EVENT_UUID=<uuid> ./devstack/smoke.sh`, with
-   two monitors created in the local backend — must end with three
-   ping rows + green check.
+7. **Real end-to-end smoke (mode B)**: `./devstack/smoke.sh` with
+   `CRONHEART_ENDPOINT`, `HEARTBEAT_UUID`, `EVENT_UUID` and
+   `CRONHEART_API_TOKEN` for two monitors on an isolated local backend
+   — must end with the new heartbeat / start / success pings + green
+   check.
 8. Squash to single commit. Author / committer identity =
    `Alexander Palazok <alexander-po@users.noreply.github.com>`. No
    `Co-Authored-By` trailers.
@@ -600,20 +610,17 @@ Don't add these without explicit design discussion:
 - **Per-event UUID editing in admin UI** — read-only table is enough
   for v0.1.x. Operators wire UUIDs through `cronheart_monitor()` calls
   or `CRONHEART_EVENT_<HOOK>_UUID` constants. Editable UI is v0.2.
-- **API for managing monitors** — backend doesn't expose a public REST
-  API yet (see `../cron-monitor`'s plan doc). Add this only after the
-  backend ships `/api/v1/monitors`.
 
 ## Lessons learned (the embarrassing ones)
 
 Things this agent got wrong in past sessions; encoded here as warnings
 so future-you doesn't repeat them.
 
-1. **"End-to-end" must mean real ping rows in the backend DB.**
+1. **"End-to-end" must mean the backend recorded the pings.**
    Don't conflate "`wp cron event run` returned exit 0" with end-to-end
    verification. The SDK swallows network errors by design; a hook can
-   return success while the ping silently fails. Use mode B and assert
-   on the `pings` table.
+   return success while the ping silently fails. Run the smoke with
+   `CRONHEART_API_TOKEN` so it asserts on the monitors' ping history.
 
 2. **Check alternative URL paths before removing references.** When a
    URL 404s, the right first step is `curl` on plausible alternative
