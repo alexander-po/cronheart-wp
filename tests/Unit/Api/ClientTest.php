@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Cronheart\WP\Tests\Unit\Api;
 
 use Cronheart\WP\Api\Client;
+use Cronheart\WP\Config\Resolver;
 use CronMonitor\Client\Configuration;
 
 final class ClientTest extends \PHPUnit\Framework\TestCase
@@ -39,5 +40,33 @@ final class ClientTest extends \PHPUnit\Framework\TestCase
         $result = $client->heartbeat('11111111-1111-4111-8111-111111111111');
 
         self::assertFalse($result->delivered);
+    }
+
+    public function test_wp_config_uuid_with_trailing_newline_is_refused_before_any_request(): void
+    {
+        // The resolver passes a wp-config.php constant through untrimmed, so
+        // the bundled SDK must refuse the newline itself: zero attempts means
+        // no request left.
+        $resolver = new Resolver(
+            constantReader: static fn (string $name): ?string => Resolver::HEARTBEAT_CONSTANT === $name
+                ? "00000000-0000-0000-0000-000000000000\n"
+                : null,
+            optionReader: static fn (string $name) => null,
+            filterApplier: static fn (string $name, array $value) => $value,
+        );
+        $client = new Client(new Configuration(
+            endpoint: 'http://127.0.0.1:1',
+            timeoutSeconds: 1.0,
+            retries: 0,
+            allowInsecureEndpoint: true,
+        ));
+        $uuid = $resolver->heartbeatUuid();
+        self::assertNotNull($uuid);
+
+        $result = $client->heartbeat($uuid);
+
+        self::assertFalse($result->delivered);
+        self::assertSame(0, $result->attempts);
+        self::assertStringContainsString('UUID', (string) $result->errorMessage);
     }
 }

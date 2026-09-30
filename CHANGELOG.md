@@ -6,6 +6,14 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.1] — 2026-09-30
+
+A patch release: the bundled SDK moves to 1.5.2, which refuses a monitor UUID with a trailing newline before any request and keeps the API token and monitor UUIDs out of its own stack-frame arguments, and the admin copy stops tying the REST API to a paid plan.
+
+### Security
+
+- Bumped the bundled `cron-monitor/php-sdk` constraint from `^1.4` to `^1.5.2`; the shipped `vendor/` tree changes by the SDK only. The fixes the plugin picks up came in 1.5.1; 1.5.2 touches only the Laravel and Symfony bridges, which the plugin does not load, and is the floor because it is the version tested and shipped. The API token and monitor UUIDs no longer reach the SDK's own stack-frame arguments, which an error tracker records, when an API call or a ping fails; the plugin's own frames are unchanged. A monitor UUID with a trailing newline is refused before any request: the plugin validates the UUIDs its admin screens save, but a `CRONHEART_HEARTBEAT_UUID` or `CRONHEART_EVENT_<HOOK>_UUID` constant, a `cronheart_monitor()` call or a `cronheart_monitor_map` filter value reaches the SDK as written, and SDK 1.4 ended its UUID match with a bare `$`, which also matches before a trailing newline, so the ping went out to `/ping/<uuid>_` (PHP's URL parser turns the newline into an underscore) and got a 404. The ping still does not arrive, so the monitor keeps reporting missed runs until the value is fixed, but no request leaves; the refusal is in the ping result, which the plugin discards as before, and the WP-Cron run is unaffected.
+
 ### Added
 
 - `skills/add-cronheart/SKILL.md`, an agent-facing recipe (Claude Code skill frontmatter, numbered steps, placeholders only) for adding Cronheart to a WordPress site, with a three-line `AGENTS.md` at the repository root and a "For coding agents" section in `README.md`. Repository-only content: `bin/build-release.sh` strips `skills/` directories from vendored packages and refuses to build a zip that carries `AGENTS.md`, `CLAUDE.md` or `skills/` at the stage root.
@@ -14,6 +22,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 - Corrected copy that tied the REST API, the monitor picker or auto-create to a paid plan. cronheart.com includes the API on every plan, the Free plan included; the plan sets the rate limit and the monitor cap. The Settings → Cronheart introduction no longer says API access needs a Starter plan. The "does not include API access" notices on the settings, Events, Channels and History screens and in the admin-AJAX errors now say the plan does not allow the request, and an "Upgrade your plan" link still appears when cronheart.com sends an upgrade URL with a refusal. The `readme.txt` installation step and FAQ, the `README.md` `CRONHEART_API_TOKEN` note and the agent recipe drop the paid-plan claim too. The settings introduction, the `readme.txt` installation step and token FAQ, the `README.md` note and the agent recipe now say a token can only be created on an account with a verified email address, and the introduction, the installation step and the agent recipe name the token page as Account → API tokens. Wording only; no behaviour change.
 - Dropped the "paid plans add the REST API access" clause from the 0.5.0 FAQ-correction entry in `readme.txt`, because it is no longer true. The 0.5.0 entry in this file stays as tagged.
+- Bumped the plugin header `Version`, `CRONHEART_VERSION` and `readme.txt` `Stable tag` to `0.5.1`.
 
 ## [0.5.0] — 2026-09-25
 

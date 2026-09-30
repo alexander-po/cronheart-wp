@@ -106,5 +106,6 @@ Pick the configuration path with the operator:
 | 0.3.0 | Account card and the "Your monitors" table (pause, resume, snooze) |
 | 0.4.0 | Cron Events screen: assign or auto-create per-event monitors |
 | 0.5.0 | Channels and History screens; SDK 1.4 (token only over HTTPS) |
+| 0.5.1 | SDK 1.5.2 (a monitor UUID with a trailing newline is refused); Free-plan API copy |
 
 `wp plugin list --name=cronheart --field=version` tells you which one a site runs; not every version is necessarily on WordPress.org yet — the plugin's `readme.txt` `Stable tag` there is the current word.
