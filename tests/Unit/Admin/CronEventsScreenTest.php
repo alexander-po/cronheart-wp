@@ -44,7 +44,7 @@ final class CronEventsScreenTest extends TestCase
     {
         Functions\when('current_user_can')->justReturn(true);
 
-        $monitors = [$this->monitorWire('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'Nightly reports')];
+        $monitors = [$this->monitorWire('00000000-0000-0000-0000-000000000000', 'Nightly reports')];
         $html = $this->renderScreen($this->resolverWithToken(), $this->factoryWithMonitors($monitors));
 
         self::assertStringContainsString('cronheart-events', $html);
@@ -71,7 +71,7 @@ final class CronEventsScreenTest extends TestCase
     {
         Functions\when('current_user_can')->justReturn(true);
 
-        $monitors = [$this->monitorWire('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'Nightly reports')];
+        $monitors = [$this->monitorWire('00000000-0000-0000-0000-000000000000', 'Nightly reports')];
         $html = $this->renderScreen($this->resolverWithConstantEvent('wp_version_check'), $this->factoryWithMonitors($monitors));
 
         self::assertStringContainsString('wp-config.php constant', $html);
@@ -200,7 +200,7 @@ final class CronEventsScreenTest extends TestCase
         $constant = Resolver::EVENT_CONSTANT_PREFIX.strtoupper(str_replace('-', '_', $hook)).Resolver::EVENT_CONSTANT_SUFFIX;
 
         return new Resolver(
-            constantReader: static fn (string $name): ?string => $name === $constant ? 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' : null,
+            constantReader: static fn (string $name): ?string => $name === $constant ? '00000000-0000-0000-0000-000000000000' : null,
             optionReader: static fn (string $name) => Resolver::API_TOKEN_OPTION === $name ? 'cmk_'.str_repeat('a', 43) : null,
             filterApplier: static fn (string $name, array $value) => $value,
         );

@@ -22,7 +22,7 @@ use PHPUnit\Framework\TestCase;
 
 final class AjaxTest extends TestCase
 {
-    private const UUID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    private const UUID = '00000000-0000-0000-0000-000000000001';
 
     protected function setUp(): void
     {
@@ -236,7 +236,7 @@ final class AjaxTest extends TestCase
         $_POST = ['hook' => 'wp_version_check', 'uuid' => self::UUID];
         $saved = null;
         Functions\when('get_option')->alias(static fn ($opt, $def = false) => Resolver::EVENT_MAP_OPTION === $opt
-            ? ['feed_refresh' => 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb']
+            ? ['feed_refresh' => '00000000-0000-0000-0000-000000000002']
             : $def);
         Functions\when('update_option')->alias(static function ($opt, $val) use (&$saved) {
             $saved = [$opt, $val];
@@ -250,7 +250,7 @@ final class AjaxTest extends TestCase
         self::assertNotNull($saved, 'update_option was called');
         self::assertSame(
             [
-                'feed_refresh' => 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+                'feed_refresh' => '00000000-0000-0000-0000-000000000002',
                 'wp_version_check' => self::UUID,
             ],
             $saved[1],

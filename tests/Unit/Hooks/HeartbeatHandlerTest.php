@@ -12,7 +12,7 @@ use PHPUnit\Framework\TestCase;
 
 final class HeartbeatHandlerTest extends TestCase
 {
-    private const UUID = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+    private const UUID = '00000000-0000-0000-0000-000000000000';
 
     public function test_tick_skips_silently_when_resolver_returns_null(): void
     {

@@ -9,15 +9,15 @@ use PHPUnit\Framework\TestCase;
 
 final class ResolverTest extends TestCase
 {
-    private const HEARTBEAT_UUID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    private const HEARTBEAT_UUID = '00000000-0000-0000-0000-000000000001';
 
-    private const EVENT_UUID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+    private const EVENT_UUID = '00000000-0000-0000-0000-000000000002';
 
     public function test_heartbeat_constant_wins_over_option(): void
     {
         $resolver = $this->buildResolver(
             constants: [Resolver::HEARTBEAT_CONSTANT => self::HEARTBEAT_UUID],
-            options: [Resolver::HEARTBEAT_OPTION => 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'],
+            options: [Resolver::HEARTBEAT_OPTION => '00000000-0000-0000-0000-000000000003'],
         );
 
         self::assertSame(self::HEARTBEAT_UUID, $resolver->heartbeatUuid());

@@ -729,7 +729,7 @@ final class SettingsPage
         add_settings_error(
             Resolver::API_TOKEN_OPTION,
             'cronheart_invalid_api_token',
-            esc_html__('The Cronheart API token must start with "cmk_". Create one at cronheart.com under Settings → API Tokens.', 'cronheart')
+            esc_html__('The Cronheart API token must start with "cmk_". Create one at cronheart.com under Account → API tokens.', 'cronheart')
         );
 
         return $stored;

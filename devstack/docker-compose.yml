@@ -18,7 +18,7 @@
 # internal hostname `http://app`.
 #
 # See README.md → "End-to-end smoke testing" for the full flow,
-# including pre-registration SQL for the local-mode UUIDs.
+# including the two monitors to create in the local backend.
 
 services:
   wp-mysql:

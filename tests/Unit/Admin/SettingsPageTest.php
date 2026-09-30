@@ -29,7 +29,7 @@ use PHPUnit\Framework\TestCase;
 
 final class SettingsPageTest extends TestCase
 {
-    private const VALID_UUID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    private const VALID_UUID = '00000000-0000-0000-0000-000000000001';
 
     protected function setUp(): void
     {
@@ -41,10 +41,12 @@ final class SettingsPageTest extends TestCase
         Monkey\tearDown();
     }
 
-    public function test_sanitize_uuid_accepts_valid_v4_uuid_and_lowercases_it(): void
+    public function test_sanitize_uuid_accepts_a_uuid_and_lowercases_it(): void
     {
+        $withHexLetters = strtr(self::VALID_UUID, '0', 'f');
+
         self::assertSame(self::VALID_UUID, SettingsPage::sanitize_uuid(self::VALID_UUID));
-        self::assertSame(self::VALID_UUID, SettingsPage::sanitize_uuid(strtoupper(self::VALID_UUID)));
+        self::assertSame($withHexLetters, SettingsPage::sanitize_uuid(strtoupper($withHexLetters)));
     }
 
     public function test_sanitize_uuid_accepts_empty_string_as_explicit_suppression(): void
@@ -221,6 +223,23 @@ final class SettingsPageTest extends TestCase
         self::assertSame('cmk_existing_token_value', SettingsPage::sanitize_api_token('not-a-token'));
     }
 
+    public function test_sanitize_api_token_rejection_names_the_account_api_tokens_page(): void
+    {
+        Functions\when('get_option')->justReturn('');
+        Functions\expect('esc_html__')->once()->with(self::isType('string'), 'cronheart')->andReturnFirstArg();
+        unset($_POST[SettingsPage::API_TOKEN_CLEAR_FIELD]);
+        $message = null;
+        Functions\when('add_settings_error')->alias(static function (string $setting, string $code, string $text) use (&$message): void {
+            $message = $text;
+        });
+
+        SettingsPage::sanitize_api_token('not-a-token');
+
+        self::assertIsString($message);
+        self::assertStringContainsString('Account → API tokens', $message);
+        self::assertStringNotContainsString('Settings → API Tokens', $message);
+    }
+
     public function test_sanitize_api_token_clear_checkbox_wipes_the_token(): void
     {
         Functions\when('get_option')->justReturn('cmk_existing_token_value');
@@ -279,8 +298,8 @@ final class SettingsPageTest extends TestCase
         );
 
         $monitors = [
-            $this->makeMonitor('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'Nightly reports'),
-            $this->makeMonitor('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'Hourly sync'),
+            $this->makeMonitor('00000000-0000-0000-0000-000000000001', 'Nightly reports'),
+            $this->makeMonitor('00000000-0000-0000-0000-000000000002', 'Hourly sync'),
         ];
 
         $page = $this->buildPage(
@@ -294,7 +313,7 @@ final class SettingsPageTest extends TestCase
 
         self::assertStringContainsString('<select', $html);
         self::assertStringContainsString('— Do not monitor —', $html);
-        self::assertStringContainsString('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', $html);
+        self::assertStringContainsString('00000000-0000-0000-0000-000000000001', $html);
         self::assertStringContainsString('Nightly reports', $html);
         self::assertStringContainsString('Hourly sync', $html);
         self::assertStringNotContainsString('<input type="text"', $html);
@@ -306,14 +325,14 @@ final class SettingsPageTest extends TestCase
         Functions\when('esc_html__')->returnArg();
         Functions\when('esc_attr')->returnArg();
         Functions\when('esc_html')->returnArg();
-        Functions\when('get_option')->justReturn('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb');
+        Functions\when('get_option')->justReturn('00000000-0000-0000-0000-000000000002');
         Functions\when('selected')->alias(
             static fn ($a, $b = true, $echo = true): string => (string) $a === (string) $b ? " selected='selected'" : ''
         );
 
         $monitors = [
-            $this->makeMonitor('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'Nightly reports'),
-            $this->makeMonitor('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'Hourly sync'),
+            $this->makeMonitor('00000000-0000-0000-0000-000000000001', 'Nightly reports'),
+            $this->makeMonitor('00000000-0000-0000-0000-000000000002', 'Hourly sync'),
         ];
 
         $page = $this->buildPage(
@@ -335,13 +354,13 @@ final class SettingsPageTest extends TestCase
         Functions\when('esc_html__')->returnArg();
         Functions\when('esc_attr')->returnArg();
         Functions\when('esc_html')->returnArg();
-        Functions\when('get_option')->justReturn('cccccccc-cccc-4ccc-8ccc-cccccccccccc');
+        Functions\when('get_option')->justReturn('00000000-0000-0000-0000-000000000003');
         Functions\when('selected')->alias(
             static fn ($a, $b = true, $echo = true): string => (string) $a === (string) $b ? " selected='selected'" : ''
         );
 
         $monitors = [
-            $this->makeMonitor('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'Nightly reports'),
+            $this->makeMonitor('00000000-0000-0000-0000-000000000001', 'Nightly reports'),
         ];
 
         $page = $this->buildPage(
@@ -355,7 +374,7 @@ final class SettingsPageTest extends TestCase
 
         // The saved-but-unlisted UUID must survive a form save rather than
         // being silently dropped to the blank option.
-        self::assertStringContainsString('cccccccc-cccc-4ccc-8ccc-cccccccccccc', $html);
+        self::assertStringContainsString('00000000-0000-0000-0000-000000000003', $html);
         self::assertStringContainsString('(not in this account)', $html);
     }
 
@@ -416,7 +435,7 @@ final class SettingsPageTest extends TestCase
             static fn (string $single, string $plural, int $number, string $domain = ''): string => 1 === $number ? $single : $plural
         );
 
-        $monitors = [$this->makeMonitor('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'Nightly reports')];
+        $monitors = [$this->makeMonitor('00000000-0000-0000-0000-000000000001', 'Nightly reports')];
 
         $page = $this->buildPage(
             $this->resolverWithApiToken('cmk_'.str_repeat('a', 43)),
@@ -578,7 +597,7 @@ final class SettingsPageTest extends TestCase
             static fn (string $single, string $plural, int $number, string $domain = ''): string => 1 === $number ? $single : $plural
         );
 
-        $monitors = [$this->makeMonitor('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'Nightly reports')];
+        $monitors = [$this->makeMonitor('00000000-0000-0000-0000-000000000001', 'Nightly reports')];
 
         $page = $this->buildPage(
             $this->resolverWithApiToken('cmk_'.str_repeat('a', 43)),
@@ -606,7 +625,7 @@ final class SettingsPageTest extends TestCase
             static fn (string $single, string $plural, int $number, string $domain = ''): string => 1 === $number ? $single : $plural
         );
 
-        $monitors = [$this->makeMonitor('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'Nightly reports')];
+        $monitors = [$this->makeMonitor('00000000-0000-0000-0000-000000000001', 'Nightly reports')];
 
         $page = $this->buildPage(
             $this->resolverWithApiToken('cmk_'.str_repeat('a', 43)),
@@ -631,7 +650,7 @@ final class SettingsPageTest extends TestCase
             static fn (string $single, string $plural, int $number, string $domain = ''): string => 1 === $number ? $single : $plural
         );
 
-        $monitors = [$this->makeMonitor('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'Nightly reports')];
+        $monitors = [$this->makeMonitor('00000000-0000-0000-0000-000000000001', 'Nightly reports')];
 
         $page = $this->buildPage(
             $this->resolverWithApiToken('cmk_'.str_repeat('a', 43)),
