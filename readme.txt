@@ -4,7 +4,7 @@ Tags: cron, wp-cron, monitoring, healthcheck, deadman-switch
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 8.2
-Stable tag: 0.5.0
+Stable tag: 0.5.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -128,6 +128,10 @@ Open an issue on [GitHub](https://github.com/alexander-po/cronheart-wp/issues).
 
 == Changelog ==
 
+= 0.5.1 =
+* Upgraded the bundled `cron-monitor/php-sdk` to `^1.5.2`. The SDK keeps the API token and monitor UUIDs out of its own stack-frame arguments, which an error tracker records, when an API call or a ping fails, and it refuses a monitor UUID with a trailing newline before any request is made. The plugin validates the UUIDs its own admin screens save, but a `CRONHEART_HEARTBEAT_UUID` or `CRONHEART_EVENT_<HOOK>_UUID` constant, a `cronheart_monitor()` call or a `cronheart_monitor_map` filter value reaches the SDK as written; with a trailing newline the older SDK sent the ping to a mangled address, which cronheart.com rejected. The ping still does not arrive, so the monitor keeps reporting missed runs until the value is fixed, but no request is sent; the WP-Cron run is unaffected either way.
+* Corrected the admin copy that tied the REST API to a paid plan. cronheart.com includes the API on every plan, the Free plan included; the plan sets the rate limit and the monitor cap. The Settings → Cronheart introduction no longer says API access needs a Starter plan and now says creating a token needs a verified email address, and the "does not include API access" notices on the settings, Events, Channels and History screens now say the plan does not allow the request. Wording only; no behaviour change.
+
 = 0.5.0 =
 * **Channel management.** A new Settings → Cronheart Channels screen lists your cronheart.com notification channels and lets you, per channel, send a real test alert through it or — for webhook channels only — rotate the signing secret (revealed once, then never shown again). Creating channels stays on cronheart.com for now; this screen tests and maintains the channels you already have.
 * **Ping & alert history.** A new Settings → Cronheart History screen shows the most recent pings (kind / time / runtime) and alerts (kind / time / channels notified) for a monitor you pick (the picker lists up to 200 monitors). Read-only, and only the first page (latest 50 of each) — it never walks your whole history.
@@ -214,6 +218,9 @@ Open an issue on [GitHub](https://github.com/alexander-po/cronheart-wp/issues).
 * PHP fatal-error capture for the fail-ping body.
 
 == Upgrade Notice ==
+
+= 0.5.1 =
+Bundles cron-monitor/php-sdk 1.5.2: a monitor UUID with a trailing newline is refused before any request, and the API token and monitor UUIDs stay out of the SDK's stack-frame arguments. Also corrects copy that tied the REST API to a paid plan.
 
 = 0.5.0 =
 Adds Cronheart Channels (test a channel, rotate a webhook secret) and Cronheart History (recent pings & alerts) screens. "Send test" sends a real notification; a rotated secret is shown once. The API token now needs an https:// endpoint; the ping path is unchanged.
