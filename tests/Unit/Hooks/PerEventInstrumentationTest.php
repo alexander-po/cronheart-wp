@@ -13,7 +13,7 @@ use PHPUnit\Framework\TestCase;
 final class PerEventInstrumentationTest extends TestCase
 {
     private const HOOK = 'app:reports:nightly';
-    private const UUID = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+    private const UUID = '00000000-0000-0000-0000-000000000000';
 
     public function test_register_installs_two_actions_per_hook_and_one_shutdown_handler(): void
     {

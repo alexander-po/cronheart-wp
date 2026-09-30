@@ -210,8 +210,10 @@ docker compose \
     -f devstack/docker-compose.local.yml \
     up -d
 
-# 3. Run smoke in mode B:
-CRONHEART_LOCAL_BACKEND=1 ./devstack/smoke.sh
+# 3. Run smoke in mode B with the UUIDs of two monitors created in
+#    the local backend (the script has no default UUIDs):
+CRONHEART_LOCAL_BACKEND=1 HEARTBEAT_UUID=<uuid> EVENT_UUID=<uuid> \
+    ./devstack/smoke.sh
 ```
 
 Expected output ends with three ping rows
@@ -276,11 +278,18 @@ image.
 
 The script:
 
-1. Runs `composer install --no-dev --prefer-dist` (host needs composer
-   on PATH OR run the script's body manually after running composer in
-   docker).
-2. Stages: `cronheart.php`, `readme.txt`, `LICENSE`, `composer.json`,
-   `composer.lock`, `src/`, `vendor/` into `build/cronheart/`.
+1. Stages: `cronheart.php`, `readme.txt`, `LICENSE`, `src/`, `assets/`
+   into `build/cronheart/`.
+2. Stages a runtime-only `composer.json` (no `require-dev`,
+   `autoload-dev`, `scripts` or `allow-plugins`) and a `composer.lock`
+   with the dev packages removed and every runtime package at the
+   version the local, untracked `composer.lock` pins (the build refuses
+   to run without one), then runs `composer install
+   --no-dev --prefer-dist` in the stage, so `composer install --no-dev`
+   from the shipped pair, stripped as in step 3, reproduces the zip's
+   `vendor/`, and the repository's own `vendor/` is left alone (host
+   needs `composer` and `php` on PATH, or run the script inside the
+   composer image).
 3. Strips from vendored packages: `tests/`, `test/`, `docs/`, `doc/`,
    `examples/`, `.github/`, **`bin/`** (Composer CLI shims),
    **`skills/`** (agent recipes, see `AGENTS.md`),
@@ -544,7 +553,9 @@ For each new version bump:
 6. Plugin Check in devstack: `wp plugin check cronheart` →
    `Success: Checks complete. No errors found.`
 7. **Real end-to-end smoke (mode B)**: `CRONHEART_LOCAL_BACKEND=1
-   ./devstack/smoke.sh` — must end with three ping rows + green check.
+   HEARTBEAT_UUID=<uuid> EVENT_UUID=<uuid> ./devstack/smoke.sh`, with
+   two monitors created in the local backend — must end with three
+   ping rows + green check.
 8. Squash to single commit. Author / committer identity =
    `Alexander Palazok <alexander-po@users.noreply.github.com>`. No
    `Co-Authored-By` trailers.

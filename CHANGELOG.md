@@ -6,6 +6,20 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.2] — 2026-09-30
+
+A patch release: the invalid-token notice names the right cronheart.com page, the release zip's Composer manifest and lock describe the runtime tree only, the test fixtures use zero-family placeholder UUIDs, and `devstack/smoke.sh` no longer carries default UUIDs.
+
+### Fixed
+
+- The settings error shown when an API token entered on the settings page is rejected now points to Account → API tokens on cronheart.com, the name the settings introduction, the `readme.txt` installation step and the agent recipe already use; it said Settings → API Tokens. Wording only; no behaviour change.
+
+### Changed
+
+- `bin/build-release.sh` ships a runtime-only `composer.json` and `composer.lock`. The staged manifest drops `require-dev`, `autoload-dev`, `scripts` and `allow-plugins`; the staged lock drops the 71 dev packages (PHPUnit, php-cs-fixer, PHPCS, Mockery and their dependencies, with their maintainers' contact details) and keeps the 7 runtime packages at the versions and references the maintainer's local lock pins; and `vendor/` is installed in the stage from that pair, so `composer install --no-dev` against the shipped files, followed by the build's strip rules, recreates the zip's `vendor/` file for file. The shipped `vendor/` is otherwise unchanged: only the autoloader class-name suffix, which Composer derives from the lock's content hash, differs from 0.5.1. The build no longer runs `composer install --no-dev` in the repository, so a developer's own `vendor/` survives it.
+- Test fixtures use only zero-family placeholder UUIDs: `00000000-0000-0000-0000-000000000000` where one is needed, and `…000001`, `…000002`, `…000003` where distinct values are. `devstack/smoke.sh` drops its two local-backend default UUIDs, which only matched monitors inserted by hand: both modes now take `HEARTBEAT_UUID` and `EVENT_UUID` from the environment, and the `README.md` local-backend flow creates two monitors in the backend instead of inserting rows by SQL. Nothing that ships in the zip changes.
+- Bumped the plugin header `Version`, `CRONHEART_VERSION` and `readme.txt` `Stable tag` to `0.5.2`.
+
 ## [0.5.1] — 2026-09-30
 
 A patch release: the bundled SDK moves to 1.5.2, which refuses a monitor UUID with a trailing newline before any request and keeps the API token and monitor UUIDs out of its own stack-frame arguments, and the admin copy stops tying the REST API to a paid plan.

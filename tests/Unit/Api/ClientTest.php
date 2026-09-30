@@ -37,7 +37,7 @@ final class ClientTest extends \PHPUnit\Framework\TestCase
             allowInsecureEndpoint: true,
         ));
 
-        $result = $client->heartbeat('11111111-1111-4111-8111-111111111111');
+        $result = $client->heartbeat('00000000-0000-0000-0000-000000000001');
 
         self::assertFalse($result->delivered);
     }

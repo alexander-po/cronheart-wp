@@ -20,8 +20,8 @@ final class EventListTest extends TestCase
     public function test_entries_returns_one_row_per_registered_hook_with_resolved_uuid(): void
     {
         $resolver = $this->resolverWith(
-            optionMap: ['app:reports:nightly' => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'],
-            filterMap: ['app:cleanup:weekly' => 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'],
+            optionMap: ['app:reports:nightly' => '00000000-0000-0000-0000-000000000001'],
+            filterMap: ['app:cleanup:weekly' => '00000000-0000-0000-0000-000000000002'],
         );
 
         $entries = (new EventList($resolver))->entries();
@@ -31,8 +31,8 @@ final class EventListTest extends TestCase
         usort($entries, static fn (array $a, array $b): int => $a['hook'] <=> $b['hook']);
 
         self::assertSame([
-            ['hook' => 'app:cleanup:weekly', 'uuid' => 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'],
-            ['hook' => 'app:reports:nightly', 'uuid' => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'],
+            ['hook' => 'app:cleanup:weekly', 'uuid' => '00000000-0000-0000-0000-000000000002'],
+            ['hook' => 'app:reports:nightly', 'uuid' => '00000000-0000-0000-0000-000000000001'],
         ], $entries);
     }
 

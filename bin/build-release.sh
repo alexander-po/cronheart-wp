@@ -27,36 +27,59 @@ STAGE_DIR="$BUILD_DIR/cronheart"
 
 cd "$ROOT"
 
+if [ ! -f composer.lock ]; then
+    echo "Refusing to build: composer.lock is missing; run composer install first" >&2
+    exit 1
+fi
+
 rm -rf "$BUILD_DIR"
 mkdir -p "$STAGE_DIR"
+
+# Stage only the files that ship with the plugin. Everything not
+# listed here is dev-time scaffolding (tests, CI, linters) that does
+# not belong in the WordPress install directory.
+cp cronheart.php "$STAGE_DIR/"
+cp readme.txt "$STAGE_DIR/"
+cp LICENSE "$STAGE_DIR/"
+cp -R src "$STAGE_DIR/"
+# The plugin's own front-of-house assets (admin JS/CSS for the
+# monitor-lifecycle UI). Distinct from the WordPress.org SVN-root
+# `assets/` (icons/banners/screenshots), which is NOT shipped in the zip.
+cp -R assets "$STAGE_DIR/"
+
+# `composer.json` and `composer.lock` are intentionally included so
+# the shipped `vendor/` tree is reproducible — WP.org's Plugin Check
+# warns when `/vendor` exists without the manifest that produced it,
+# and downstream contributors can run `composer install --no-dev`
+# against the shipped pair, then strip the resulting `vendor/` as
+# below, to recreate the exact tree.
+# Both describe the runtime tree only: the staged manifest drops the
+# dev-only keys, a partial update naming only the dev packages removes
+# them from the staged lock and leaves every runtime package at the
+# version the local `composer.lock` pins (with no names it would be a
+# full update), and `vendor/` is installed from that pair, because the
+# autoloader class names are derived from the lock's content hash.
+# Git must not find the repository above the stage, or Composer
+# records its branch and commit as the root version and a reinstall
+# from the shipped pair no longer matches.
+export GIT_CEILING_DIRECTORIES="$BUILD_DIR"
+php -r '
+    $manifest = json_decode(file_get_contents("composer.json"), false, 512, JSON_THROW_ON_ERROR);
+    unset($manifest->{"require-dev"}, $manifest->{"autoload-dev"}, $manifest->scripts, $manifest->config->{"allow-plugins"});
+    echo json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR), "\n";
+' > "$STAGE_DIR/composer.json"
+cp composer.lock "$STAGE_DIR/"
+dev_packages="$(php -r 'echo implode(" ", array_column(json_decode(file_get_contents("composer.lock"), true, 512, JSON_THROW_ON_ERROR)["packages-dev"] ?? [], "name"));')"
+if [ -n "$dev_packages" ]; then
+    composer update $dev_packages --no-install --no-interaction --no-progress --working-dir="$STAGE_DIR"
+fi
 
 # Production deps only. Vendor namespace prefixing (Strauss /
 # php-scoper) is deferred — see README and CHANGELOG. We ship the
 # SDK under its canonical `CronMonitor\…` namespace; conflict risk
 # is minimal in practice because no other WP plugin currently bundles
 # `cron-monitor/php-sdk`.
-composer install --no-dev --no-interaction --no-progress --prefer-dist
-
-# Stage only the files that ship with the plugin. Everything not
-# listed here is dev-time scaffolding (tests, CI, linters) that does
-# not belong in the WordPress install directory.
-#
-# `composer.json` and `composer.lock` are intentionally included so
-# the shipped `vendor/` tree is reproducible — WP.org's Plugin Check
-# warns when `/vendor` exists without the manifest that produced it,
-# and downstream contributors can run `composer install` against the
-# checked-in lock to recreate the exact tree.
-cp cronheart.php "$STAGE_DIR/"
-cp readme.txt "$STAGE_DIR/"
-cp LICENSE "$STAGE_DIR/"
-cp composer.json "$STAGE_DIR/"
-cp composer.lock "$STAGE_DIR/"
-cp -R src "$STAGE_DIR/"
-# The plugin's own front-of-house assets (admin JS/CSS for the
-# monitor-lifecycle UI). Distinct from the WordPress.org SVN-root
-# `assets/` (icons/banners/screenshots), which is NOT shipped in the zip.
-cp -R assets "$STAGE_DIR/"
-cp -R vendor "$STAGE_DIR/"
+composer install --no-dev --no-interaction --no-progress --prefer-dist --working-dir="$STAGE_DIR"
 
 # Strip non-essential files from vendored packages. Composer's
 # `archive.exclude` only affects `composer archive`, not the

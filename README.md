@@ -280,13 +280,9 @@ the expected rows are missing.
 #    maintainers only):
 cd ../cron-monitor && make up && cd -
 
-# 2. Pre-register the two smoke monitors in the cronheart DB —
-#    these UUIDs are what smoke.sh defaults to in local mode:
-docker compose -f ../cron-monitor/docker-compose.yml exec -T db \
-    mysql -uapp -papp cronmonitor -e "
-INSERT IGNORE INTO monitors (project_id, uuid, name, schedule_kind, schedule_expr, tz, grace_seconds, status, created_at) VALUES
-  (2, UNHEX(REPLACE('11111111-1111-4111-8111-111111111111', '-', '')), 'cronheart-wp smoke: heartbeat', 'interval', '300', 'UTC', 60, 'new', NOW()),
-  (2, UNHEX(REPLACE('22222222-2222-4222-8222-222222222222', '-', '')), 'cronheart-wp smoke: per-event', 'cron',     '0 2 * * *', 'UTC', 60, 'new', NOW());"
+# 2. Create two monitors in the local backend (a heartbeat and a
+#    per-event one), e.g. in its dashboard, and note the UUIDs the
+#    backend assigns them.
 
 # 3. Build the plugin zip:
 ./bin/build-release.sh
@@ -302,7 +298,10 @@ docker compose \
     up -d
 
 # 5. Run smoke in local-backend mode — DB assertion enabled:
-CRONHEART_LOCAL_BACKEND=1 ./devstack/smoke.sh
+CRONHEART_LOCAL_BACKEND=1 \
+HEARTBEAT_UUID=<local-heartbeat-uuid> \
+EVENT_UUID=<local-event-uuid> \
+    ./devstack/smoke.sh
 
 # 6. Tear down WordPress (keeps cronheart backend running):
 docker compose \

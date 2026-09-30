@@ -19,9 +19,9 @@
 #     Requires access to the closed-source `cron-monitor` backend
 #     repository at `../cron-monitor`. With that backend up via
 #     `make up`, set `CRONHEART_LOCAL_BACKEND=1` when invoking this
-#     script. UUIDs default to the two literals pre-registered by
-#     the README's flow-B instructions. Verification is automated
-#     against the `pings` table.
+#     script and pass the UUIDs of two monitors created in that
+#     backend through `HEARTBEAT_UUID` / `EVENT_UUID`. Verification
+#     is automated against the `pings` table.
 #
 # # Prerequisites (both modes)
 #
@@ -31,10 +31,10 @@
 # # Examples
 #
 #     # Mode A (against cronheart.com):
-#     HEARTBEAT_UUID=xxxxxxxx-… EVENT_UUID=yyyyyyyy-… ./devstack/smoke.sh
+#     HEARTBEAT_UUID=<heartbeat-uuid> EVENT_UUID=<event-uuid> ./devstack/smoke.sh
 #
 #     # Mode B (against local backend):
-#     CRONHEART_LOCAL_BACKEND=1 ./devstack/smoke.sh
+#     CRONHEART_LOCAL_BACKEND=1 HEARTBEAT_UUID=<heartbeat-uuid> EVENT_UUID=<event-uuid> ./devstack/smoke.sh
 
 set -euo pipefail
 
@@ -45,24 +45,18 @@ if [ -n "$LOCAL_MODE" ]; then
     MODE="local"
     CRONHEART_INTERNAL_ENDPOINT="http://app"
     CRONHEART_ALLOW_INSECURE="true"
-    # These literals match the rows pre-registered by the README's
-    # flow-B SQL. Smoke.sh will fail the DB assertion if the rows
-    # are missing.
-    HEARTBEAT_UUID="${HEARTBEAT_UUID:-11111111-1111-4111-8111-111111111111}"
-    EVENT_UUID="${EVENT_UUID:-22222222-2222-4222-8222-222222222222}"
 else
     MODE="prod"
     CRONHEART_INTERNAL_ENDPOINT="https://cronheart.com"
     CRONHEART_ALLOW_INSECURE="false"
-    if [ -z "${HEARTBEAT_UUID:-}" ] || [ -z "${EVENT_UUID:-}" ]; then
-        echo "Production mode requires HEARTBEAT_UUID and EVENT_UUID env vars." >&2
-        echo "Sign up at https://cronheart.com, create two monitors, and re-run:" >&2
-        echo "  HEARTBEAT_UUID=<uuid> EVENT_UUID=<uuid> ./devstack/smoke.sh" >&2
-        echo "" >&2
-        echo "Or run in local-backend mode if you have the cron-monitor source:" >&2
-        echo "  CRONHEART_LOCAL_BACKEND=1 ./devstack/smoke.sh" >&2
-        exit 2
-    fi
+fi
+
+if [ -z "${HEARTBEAT_UUID:-}" ] || [ -z "${EVENT_UUID:-}" ]; then
+    echo "Both modes require HEARTBEAT_UUID and EVENT_UUID env vars: the UUIDs of two monitors." >&2
+    echo "Create them on cronheart.com, or in the local backend for CRONHEART_LOCAL_BACKEND=1, and re-run:" >&2
+    echo "  HEARTBEAT_UUID=<uuid> EVENT_UUID=<uuid> ./devstack/smoke.sh" >&2
+    echo "  CRONHEART_LOCAL_BACKEND=1 HEARTBEAT_UUID=<uuid> EVENT_UUID=<uuid> ./devstack/smoke.sh" >&2
+    exit 2
 fi
 
 # ── Fixed inputs ──────────────────────────────────────────────────────

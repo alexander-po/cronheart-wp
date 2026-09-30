@@ -24,15 +24,15 @@ final class ManagementClientTest extends TestCase
     {
         [$management, $http] = $this->managementClient([
             $this->monitorsPage([
-                $this->monitorWire('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'Nightly reports'),
-                $this->monitorWire('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'Hourly sync'),
+                $this->monitorWire('00000000-0000-0000-0000-000000000001', 'Nightly reports'),
+                $this->monitorWire('00000000-0000-0000-0000-000000000002', 'Hourly sync'),
             ], total: 2),
         ]);
 
         $monitors = $management->listMonitors();
 
         self::assertCount(2, $monitors);
-        self::assertSame('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', $monitors[0]->uuid);
+        self::assertSame('00000000-0000-0000-0000-000000000001', $monitors[0]->uuid);
         self::assertSame('Hourly sync', $monitors[1]->name);
 
         $request = $http->requests[0];
@@ -99,47 +99,47 @@ final class ManagementClientTest extends TestCase
     public function test_pause_posts_to_the_pause_subresource(): void
     {
         [$management, $http] = $this->managementClient([
-            new Response(200, ['Content-Type' => 'application/json'], (string) json_encode($this->monitorWire('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'Nightly'))),
+            new Response(200, ['Content-Type' => 'application/json'], (string) json_encode($this->monitorWire('00000000-0000-0000-0000-000000000001', 'Nightly'))),
         ]);
 
-        $management->pause('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+        $management->pause('00000000-0000-0000-0000-000000000001');
 
         $request = $http->requests[0];
         self::assertSame('POST', $request->getMethod());
-        self::assertSame('https://cronheart.com/api/v1/monitors/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/pause', (string) $request->getUri());
+        self::assertSame('https://cronheart.com/api/v1/monitors/00000000-0000-0000-0000-000000000001/pause', (string) $request->getUri());
     }
 
     public function test_snooze_posts_the_bounded_duration(): void
     {
         [$management, $http] = $this->managementClient([
-            new Response(200, ['Content-Type' => 'application/json'], (string) json_encode($this->monitorWire('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'Nightly'))),
+            new Response(200, ['Content-Type' => 'application/json'], (string) json_encode($this->monitorWire('00000000-0000-0000-0000-000000000001', 'Nightly'))),
         ]);
 
-        $management->snooze('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', SnoozeDuration::OneDay);
+        $management->snooze('00000000-0000-0000-0000-000000000001', SnoozeDuration::OneDay);
 
         $request = $http->requests[0];
         self::assertSame('POST', $request->getMethod());
-        self::assertSame('https://cronheart.com/api/v1/monitors/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/snooze', (string) $request->getUri());
+        self::assertSame('https://cronheart.com/api/v1/monitors/00000000-0000-0000-0000-000000000001/snooze', (string) $request->getUri());
         self::assertSame(['duration' => '1d'], json_decode($http->bodies[0], true));
     }
 
     public function test_unsnooze_posts_to_the_unsnooze_subresource(): void
     {
         [$management, $http] = $this->managementClient([
-            new Response(200, ['Content-Type' => 'application/json'], (string) json_encode($this->monitorWire('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'Nightly'))),
+            new Response(200, ['Content-Type' => 'application/json'], (string) json_encode($this->monitorWire('00000000-0000-0000-0000-000000000001', 'Nightly'))),
         ]);
 
-        $management->unsnooze('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+        $management->unsnooze('00000000-0000-0000-0000-000000000001');
 
         $request = $http->requests[0];
         self::assertSame('POST', $request->getMethod());
-        self::assertSame('https://cronheart.com/api/v1/monitors/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/unsnooze', (string) $request->getUri());
+        self::assertSame('https://cronheart.com/api/v1/monitors/00000000-0000-0000-0000-000000000001/unsnooze', (string) $request->getUri());
     }
 
     public function test_create_interval_monitor_posts_bare_digit_schedule_and_idempotency_key(): void
     {
         [$management, $http] = $this->managementClient([
-            new Response(201, ['Content-Type' => 'application/json'], (string) json_encode($this->monitorWire('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'wp_version_check'))),
+            new Response(201, ['Content-Type' => 'application/json'], (string) json_encode($this->monitorWire('00000000-0000-0000-0000-000000000001', 'wp_version_check'))),
         ]);
 
         $management->createIntervalMonitor('wp_version_check', 43200, 'UTC', 4320, 'wp-abc123');
@@ -270,7 +270,7 @@ final class ManagementClientTest extends TestCase
             ])),
         ]);
 
-        $page = $management->listPings('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+        $page = $management->listPings('00000000-0000-0000-0000-000000000001');
 
         self::assertCount(2, $page->data);
         self::assertSame(PingKind::Success, $page->data[0]->kind);
@@ -280,7 +280,7 @@ final class ManagementClientTest extends TestCase
 
         $request = $http->requests[0];
         self::assertSame('GET', $request->getMethod());
-        self::assertSame('https://cronheart.com/api/v1/monitors/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/pings?limit=50', (string) $request->getUri());
+        self::assertSame('https://cronheart.com/api/v1/monitors/00000000-0000-0000-0000-000000000001/pings?limit=50', (string) $request->getUri());
         self::assertCount(1, $http->requests, 'the dashboard reads only the first page — no cursor walk');
     }
 
@@ -298,7 +298,7 @@ final class ManagementClientTest extends TestCase
             ])),
         ]);
 
-        $page = $management->listAlerts('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+        $page = $management->listAlerts('00000000-0000-0000-0000-000000000001');
 
         self::assertCount(2, $page->data);
         self::assertSame(AlertKind::Late, $page->data[0]->kind);
@@ -308,7 +308,7 @@ final class ManagementClientTest extends TestCase
 
         $request = $http->requests[0];
         self::assertSame('GET', $request->getMethod());
-        self::assertSame('https://cronheart.com/api/v1/monitors/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/alerts?offset=0&limit=50', (string) $request->getUri());
+        self::assertSame('https://cronheart.com/api/v1/monitors/00000000-0000-0000-0000-000000000001/alerts?offset=0&limit=50', (string) $request->getUri());
         self::assertCount(1, $http->requests, 'the dashboard reads only the first page');
     }
 
@@ -347,7 +347,7 @@ final class ManagementClientTest extends TestCase
     {
         $batch = [];
         for ($i = $start; $i < $start + $count; ++$i) {
-            $batch[] = $this->monitorWire(\sprintf('%08d-0000-4000-8000-000000000000', $i), 'Monitor '.$i);
+            $batch[] = $this->monitorWire('00000000-0000-0000-0000-000000000000', 'Monitor '.$i);
         }
 
         return $batch;

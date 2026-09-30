@@ -11,7 +11,7 @@ use PHPUnit\Framework\TestCase;
 final class MonitorHelperTest extends TestCase
 {
     private const HOOK = 'app:reports:nightly';
-    private const UUID = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
+    private const UUID = '00000000-0000-0000-0000-000000000000';
 
     protected function setUp(): void
     {

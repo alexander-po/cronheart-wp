@@ -19,7 +19,7 @@ use PHPUnit\Framework\TestCase;
 
 final class HistoryScreenTest extends TestCase
 {
-    private const UUID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    private const UUID = '00000000-0000-0000-0000-000000000000';
 
     protected function setUp(): void
     {
