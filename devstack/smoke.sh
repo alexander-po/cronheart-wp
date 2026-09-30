@@ -4,58 +4,56 @@
 # wires it to a cronheart backend, triggers WP-Cron, and asserts the
 # pings arrived.
 #
-# # Two modes
+# # Inputs
 #
-# **A. Production mode (default — public contributors)**
-#     Pings cronheart.com. You must:
-#       - Sign up at https://cronheart.com and create two monitors
-#         (heartbeat + a test per-event hook).
-#       - Pass the UUIDs through `HEARTBEAT_UUID` / `EVENT_UUID`
-#         env vars.
-#     Verification: visit the cronheart.com dashboard manually
-#     (this script cannot read the prod DB).
+#     HEARTBEAT_UUID, EVENT_UUID   two monitors created for this run
+#                                  (heartbeat + a test per-event hook).
+#     CRONHEART_ENDPOINT           backend URL as seen from the WP
+#                                  containers; defaults to
+#                                  https://cronheart.com. Anything but
+#                                  https:// turns on
+#                                  CRONHEART_ALLOW_INSECURE_ENDPOINT.
+#     CRONHEART_API_TOKEN          optional. When set, the script reads
+#                                  both monitors' ping history through
+#                                  the public REST API and fails unless
+#                                  this run's pings arrived. Without it,
+#                                  verify on the dashboard by hand.
+#     CRONHEART_ALLOW_INSECURE_TOKEN=1
+#                                  lets the token travel to a non-https
+#                                  endpoint; use it only with a
+#                                  throwaway token on a local backend.
 #
-# **B. Local-backend mode (maintainers only)**
-#     Requires access to the closed-source `cron-monitor` backend
-#     repository at `../cron-monitor`. With that backend up via
-#     `make up`, set `CRONHEART_LOCAL_BACKEND=1` when invoking this
-#     script and pass the UUIDs of two monitors created in that
-#     backend through `HEARTBEAT_UUID` / `EVENT_UUID`. Verification
-#     is automated against the `pings` table.
-#
-# # Prerequisites (both modes)
+# # Prerequisites
 #
 #     1. Plugin zip built:   ./bin/build-release.sh
 #     2. WP + MySQL up:      docker compose -f devstack/docker-compose.yml up -d
+#        (for a backend on a Docker network, layer
+#        devstack/docker-compose.local.yml, see README.md)
 #
-# # Examples
+# # Example
 #
-#     # Mode A (against cronheart.com):
-#     HEARTBEAT_UUID=<heartbeat-uuid> EVENT_UUID=<event-uuid> ./devstack/smoke.sh
-#
-#     # Mode B (against local backend):
-#     CRONHEART_LOCAL_BACKEND=1 HEARTBEAT_UUID=<heartbeat-uuid> EVENT_UUID=<event-uuid> ./devstack/smoke.sh
+#     HEARTBEAT_UUID=<uuid> EVENT_UUID=<uuid> CRONHEART_API_TOKEN=<token> \
+#         ./devstack/smoke.sh
 
 set -euo pipefail
 
-# ── Mode detection ────────────────────────────────────────────────────
-LOCAL_MODE="${CRONHEART_LOCAL_BACKEND:-}"
-
-if [ -n "$LOCAL_MODE" ]; then
-    MODE="local"
-    CRONHEART_INTERNAL_ENDPOINT="http://app"
-    CRONHEART_ALLOW_INSECURE="true"
-else
-    MODE="prod"
-    CRONHEART_INTERNAL_ENDPOINT="https://cronheart.com"
-    CRONHEART_ALLOW_INSECURE="false"
-fi
+CRONHEART_ENDPOINT="${CRONHEART_ENDPOINT:-https://cronheart.com}"
+case "$CRONHEART_ENDPOINT" in
+    https://*) CRONHEART_ALLOW_INSECURE="false" ;;
+    *) CRONHEART_ALLOW_INSECURE="true" ;;
+esac
 
 if [ -z "${HEARTBEAT_UUID:-}" ] || [ -z "${EVENT_UUID:-}" ]; then
-    echo "Both modes require HEARTBEAT_UUID and EVENT_UUID env vars: the UUIDs of two monitors." >&2
-    echo "Create them on cronheart.com, or in the local backend for CRONHEART_LOCAL_BACKEND=1, and re-run:" >&2
-    echo "  HEARTBEAT_UUID=<uuid> EVENT_UUID=<uuid> ./devstack/smoke.sh" >&2
-    echo "  CRONHEART_LOCAL_BACKEND=1 HEARTBEAT_UUID=<uuid> EVENT_UUID=<uuid> ./devstack/smoke.sh" >&2
+    echo "HEARTBEAT_UUID and EVENT_UUID are required." >&2
+    echo "Create two monitors on the backend and re-run:" >&2
+    echo "  HEARTBEAT_UUID=<uuid> EVENT_UUID=<uuid> [CRONHEART_API_TOKEN=<token>] ./devstack/smoke.sh" >&2
+    exit 2
+fi
+
+if [ -n "${CRONHEART_API_TOKEN:-}" ] && [ "$CRONHEART_ALLOW_INSECURE" = "true" ] \
+    && [ "${CRONHEART_ALLOW_INSECURE_TOKEN:-}" != "1" ]; then
+    echo "Refusing to send CRONHEART_API_TOKEN to $CRONHEART_ENDPOINT without TLS." >&2
+    echo "For a throwaway token on a local backend, set CRONHEART_ALLOW_INSECURE_TOKEN=1." >&2
     exit 2
 fi
 
@@ -74,7 +72,44 @@ ok() { printf "\033[1;32m✓ %s\033[0m\n" "$*"; }
 
 WPCLI="docker compose -f devstack/docker-compose.yml exec -T wp-cli wp"
 
-log "Smoke mode: $MODE (endpoint = $CRONHEART_INTERNAL_ENDPOINT)"
+LIST_PINGS_PHP=$(cat <<'PHP'
+$response = wp_remote_get(
+    untrailingslashit( CRONHEART_ENDPOINT ) . '/api/v1/monitors/' . getenv( 'SMOKE_MONITOR_UUID' ) . '/pings?limit=100',
+    array(
+        'timeout'     => 15,
+        'redirection' => 0,
+        'headers' => array( 'Authorization' => 'Bearer ' . getenv( 'CRONHEART_API_TOKEN' ) ),
+    )
+);
+if ( 200 !== wp_remote_retrieve_response_code( $response ) ) {
+    WP_CLI::error( 'ping history request failed: ' . ( is_wp_error( $response ) ? $response->get_error_message() : wp_remote_retrieve_response_code( $response ) ) );
+}
+$body = json_decode( wp_remote_retrieve_body( $response ), true );
+if ( ! is_array( $body['data'] ?? null ) ) {
+    WP_CLI::error( 'ping history response has no data list' );
+}
+foreach ( $body['data'] as $ping ) {
+    echo $ping['id'], ' ', $ping['kind'], "\n";
+}
+PHP
+)
+
+# The token reaches the container through the environment, never through argv.
+list_pings() {
+    SMOKE_MONITOR_UUID="$1" docker compose -f devstack/docker-compose.yml exec -T \
+        -e CRONHEART_API_TOKEN -e SMOKE_MONITOR_UUID wp-cli \
+        wp eval "$LIST_PINGS_PHP" --allow-root
+}
+
+new_pings() {
+    awk 'NR == FNR { seen[$1] = 1; next } NF && !seen[$1]' <(printf '%s\n' "$1") <(printf '%s\n' "$2")
+}
+
+count_kind() {
+    printf '%s\n' "$1" | awk -v kind="$2" '$2 == kind { n++ } END { print n + 0 }'
+}
+
+log "Smoke run against $CRONHEART_ENDPOINT"
 
 # ── 1. WP install ────────────────────────────────────────────────────
 log "Installing WordPress (idempotent — skips if already installed)"
@@ -94,7 +129,7 @@ $WPCLI core is-installed --allow-root >/dev/null 2>&1 \
 log "Setting cronheart constants in wp-config.php"
 $WPCLI config set CRONHEART_HEARTBEAT_UUID "$HEARTBEAT_UUID" --type=constant --allow-root
 $WPCLI config set "CRONHEART_EVENT_$(echo "$EVENT_HOOK" | tr '[:lower:]' '[:upper:]')_UUID" "$EVENT_UUID" --type=constant --allow-root
-$WPCLI config set CRONHEART_ENDPOINT "$CRONHEART_INTERNAL_ENDPOINT" --type=constant --allow-root
+$WPCLI config set CRONHEART_ENDPOINT "$CRONHEART_ENDPOINT" --type=constant --allow-root
 $WPCLI config set CRONHEART_ALLOW_INSECURE_ENDPOINT "$CRONHEART_ALLOW_INSECURE" --type=constant --raw --allow-root
 
 # ── 3. Install + activate plugin ────────────────────────────────────
@@ -130,6 +165,12 @@ PHP" || warn "mu-plugin write failed; per-event step will be skipped"
 $WPCLI cache flush --allow-root >/dev/null 2>&1 || true
 
 # ── 5. Fire WP-Cron events ───────────────────────────────────────────
+if [ -n "${CRONHEART_API_TOKEN:-}" ]; then
+    log "Reading both monitors' ping history before the run"
+    HEARTBEAT_BEFORE=$(list_pings "$HEARTBEAT_UUID") || fail "Could not read the heartbeat monitor's pings. Check the endpoint, the token and the UUID."
+    EVENT_BEFORE=$(list_pings "$EVENT_UUID") || fail "Could not read the per-event monitor's pings. Check the endpoint, the token and the UUID."
+fi
+
 log "Firing heartbeat tick"
 $WPCLI cron event run cronheart_heartbeat_tick --allow-root || warn "heartbeat tick run reported failure"
 
@@ -137,32 +178,20 @@ log "Firing test event (${EVENT_HOOK})"
 $WPCLI cron event run "$EVENT_HOOK" --allow-root || warn "test event run reported failure"
 
 # ── 6. Verify pings ──────────────────────────────────────────────────
-if [ "$MODE" = "local" ]; then
-    # Numbers we expect (per smoke run):
-    #   - heartbeat UUID ($HEARTBEAT_UUID): 1 row, kind=heartbeat
-    #   - event UUID     ($EVENT_UUID):    2 rows, kind=start + kind=success
-    log "Pings observed in the cronheart DB (last 5 minutes):"
-    PING_QUERY="
-      SELECT id, monitor_id, kind, user_agent, received_at
-        FROM pings
-       WHERE received_at > NOW() - INTERVAL 5 MINUTE
-    ORDER BY id DESC;
-    "
-    PING_OUTPUT=$(docker compose -f ../cron-monitor/docker-compose.yml exec -T db \
-        mysql -uapp -papp cronmonitor -e "$PING_QUERY" 2>&1 | grep -v "Warning: Using a password" || echo "")
+if [ -n "${CRONHEART_API_TOKEN:-}" ]; then
+    HEARTBEAT_AFTER=$(list_pings "$HEARTBEAT_UUID") || fail "Could not re-read the heartbeat monitor's pings."
+    EVENT_AFTER=$(list_pings "$EVENT_UUID") || fail "Could not re-read the per-event monitor's pings."
+    HEARTBEAT_NEW=$(new_pings "$HEARTBEAT_BEFORE" "$HEARTBEAT_AFTER")
+    EVENT_NEW=$(new_pings "$EVENT_BEFORE" "$EVENT_AFTER")
 
-    if [ -z "$PING_OUTPUT" ]; then
-        fail "Could not read pings from cronheart DB. Is the backend container up?"
-    fi
+    log "New pings on the heartbeat monitor ($HEARTBEAT_UUID):"
+    echo "${HEARTBEAT_NEW:-(none)}"
+    log "New pings on the per-event monitor ($EVENT_UUID):"
+    echo "${EVENT_NEW:-(none)}"
 
-    echo "$PING_OUTPUT"
-
-    # Belt-and-suspenders: assert that the expected rows are present.
-    # We accept any agent prefixed `cron-monitor-php-sdk/` so a future
-    # SDK version bump (0.2 → 0.3) does not require touching this script.
-    HEARTBEAT_FOUND=$(echo "$PING_OUTPUT" | awk '$3 == "heartbeat" && $4 ~ /^cron-monitor-php-sdk\// {n++} END {print n+0}')
-    START_FOUND=$(echo "$PING_OUTPUT" | awk '$3 == "start" && $4 ~ /^cron-monitor-php-sdk\// {n++} END {print n+0}')
-    SUCCESS_FOUND=$(echo "$PING_OUTPUT" | awk '$3 == "success" && $4 ~ /^cron-monitor-php-sdk\// {n++} END {print n+0}')
+    HEARTBEAT_FOUND=$(count_kind "$HEARTBEAT_NEW" heartbeat)
+    START_FOUND=$(count_kind "$EVENT_NEW" start)
+    SUCCESS_FOUND=$(count_kind "$EVENT_NEW" success)
 
     echo
     echo "Heartbeat pings: $HEARTBEAT_FOUND (expected ≥1)"
@@ -176,13 +205,10 @@ if [ "$MODE" = "local" ]; then
     echo
     ok "All expected pings observed. Smoke run complete."
 else
-    # Production mode: we cannot read the cronheart.com DB. Print
-    # what would be expected and ask the human to verify on the
-    # dashboard.
     cat <<EOF
 
 The plugin has driven a heartbeat tick + a per-event run against
-$CRONHEART_INTERNAL_ENDPOINT. To verify the pings arrived, open the
+$CRONHEART_ENDPOINT. To verify the pings arrived, open the
 cronheart dashboard and inspect the two monitors corresponding to:
 
   - Heartbeat UUID: $HEARTBEAT_UUID
@@ -201,5 +227,5 @@ If those pings did not arrive, check:
           wp config get CRONHEART_ENDPOINT --allow-root
 
 EOF
-    ok "Production smoke run complete — verify the pings manually on the dashboard."
+    ok "Smoke run complete — verify the pings manually on the dashboard, or re-run with CRONHEART_API_TOKEN."
 fi

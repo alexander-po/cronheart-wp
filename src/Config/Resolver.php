@@ -220,9 +220,8 @@ final class Resolver
      * Whether the SDK should accept `http://` endpoints (the SDK's
      * `Configuration` rejects plain-HTTP by default — leaking the
      * monitor UUID over the network in clear text). Required when
-     * pointing the plugin at a local backend (e.g. `make up` cronheart
-     * on `http://host.docker.internal:8081`) or any staging behind a
-     * VPN that does not terminate TLS.
+     * pointing the plugin at a local backend over plain HTTP or any
+     * staging behind a VPN that does not terminate TLS.
      *
      * The constant accepts `true` / `false` literals (the natural
      * `define('CRONHEART_ALLOW_INSECURE_ENDPOINT', true);` pattern)

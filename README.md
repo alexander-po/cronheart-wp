@@ -223,87 +223,70 @@ CI runs all four checks plus `composer validate --strict` and
 
 ### End-to-end smoke testing
 
-Two flows depending on whether you have access to the cron-monitor
-backend source. **External contributors use flow A (production);
-maintainers with backend access can use flow B (local) for
-faster iteration and full DB-level assertions.**
+`devstack/smoke.sh` installs the built plugin into a throwaway
+WordPress, fires the heartbeat tick and a test per-event hook, and
+checks that the backend recorded the pings. The check reads each
+monitor's ping history through the public REST API
+(`GET /api/v1/monitors/<uuid>/pings`), so it needs an API token; it
+compares the history before and after the run and fails unless the
+heartbeat monitor gained a `heartbeat` ping and the per-event monitor a
+`start` and a `success`. Without a token the script stops short of the
+check and prints what to look for on the dashboard.
 
 #### A. Against production cronheart.com (public contributors)
-
-The cron-monitor backend powering `cronheart.com` is a closed-source
-SaaS — public contributors cannot run a local copy. The default
-end-to-end verification path is therefore against the production
-service. It still validates the full plugin → SDK → wire-contract
-→ backend pipeline; only the DB-level assertion is replaced with a
-dashboard check.
 
 ```bash
 # 1. Sign up at https://cronheart.com and create two monitors:
 #    one for the site heartbeat, one for a test per-event hook.
-#    Copy each UUID from the dashboard.
+#    Copy each UUID, and create an API token (Account → API tokens).
 
 # 2. Build the plugin zip:
 ./bin/build-release.sh
 
-# 3. Bring up WordPress + MySQL + WP-CLI (cronheart.com is the
-#    backend; no local backend network needed):
+# 3. Bring up WordPress + MySQL + WP-CLI:
 docker compose -f devstack/docker-compose.yml up -d
 
-# 4. Drive the smoke with your real UUIDs (HEARTBEAT and EVENT
-#    accept any UUID v4; smoke.sh reads them from these env vars).
-#    The script auto-detects "prod" mode when CRONHEART_LOCAL_BACKEND
-#    is unset and skips the DB-side assertion.
+# 4. Drive the smoke; the token is read without echo and kept out of
+#    shell history (skip it to verify on the dashboard instead):
+read -rs CRONHEART_API_TOKEN && export CRONHEART_API_TOKEN
 HEARTBEAT_UUID=<your-heartbeat-uuid> \
 EVENT_UUID=<your-event-uuid> \
     ./devstack/smoke.sh
 
-# 5. Verify on the cronheart.com dashboard that the expected
-#    heartbeat / start / success pings arrived.
-
-# 6. Tear down:
+# 5. Tear down:
 docker compose -f devstack/docker-compose.yml down -v
 ```
 
-#### B. Against a local cron-monitor backend (maintainers only)
+#### B. Against a backend on a local Docker network (maintainers only)
 
-This flow requires checked-out access to the closed-source
-`cron-monitor` backend repository (sibling directory
-`../cron-monitor`). Outside the cronheart maintainer team you do
-not have access — use flow A above.
-
-The advantage of the local flow is full DB-level assertion: the
-smoke script reads back from the `pings` table and fails loudly if
-the expected rows are missing.
+The same script and the same API check, pointed at a backend that
+runs in Docker next to the devstack. Bring the backend up the way its
+own repository documents, create the two monitors and an API token on
+it, then join the devstack to its network.
 
 ```bash
-# 1. Bring up the cronheart backend (private sibling repo —
-#    maintainers only):
-cd ../cron-monitor && make up && cd -
-
-# 2. Create two monitors in the local backend (a heartbeat and a
-#    per-event one), e.g. in its dashboard, and note the UUIDs the
-#    backend assigns them.
-
-# 3. Build the plugin zip:
+# 1. Build the plugin zip:
 ./bin/build-release.sh
 
-# 4. Bring up WordPress + MySQL + WP-CLI joined to the cronheart
-#    backend's Docker network. The `docker-compose.local.yml`
-#    override layers in the external network reference — without it
-#    the base compose runs in prod-mode and won't resolve the local
-#    backend.
+# 2. Bring up WordPress + MySQL + WP-CLI joined to the backend's
+#    Docker network:
+export CRONHEART_BACKEND_NETWORK=<backend-docker-network>
 docker compose \
     -f devstack/docker-compose.yml \
     -f devstack/docker-compose.local.yml \
     up -d
 
-# 5. Run smoke in local-backend mode — DB assertion enabled:
-CRONHEART_LOCAL_BACKEND=1 \
-HEARTBEAT_UUID=<local-heartbeat-uuid> \
-EVENT_UUID=<local-event-uuid> \
+# 3. Drive the smoke against the backend's address on that network.
+#    The script refuses to send a token without TLS unless told to;
+#    only do that with a throwaway token on the local backend:
+CRONHEART_ENDPOINT=<http://backend-host-on-that-network> \
+HEARTBEAT_UUID=<heartbeat-uuid> \
+EVENT_UUID=<event-uuid> \
+CRONHEART_API_TOKEN=<throwaway-api-token> \
+CRONHEART_ALLOW_INSECURE_TOKEN=1 \
     ./devstack/smoke.sh
 
-# 6. Tear down WordPress (keeps cronheart backend running):
+# 4. Tear down WordPress (leaves the backend running):
 docker compose \
     -f devstack/docker-compose.yml \
     -f devstack/docker-compose.local.yml \
