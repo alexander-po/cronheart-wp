@@ -69,23 +69,12 @@ cp "$SRC_DIR/icon.svg" "$SRC_DIR/banner.svg" "$OUT_DIR/"
 
 echo "Rendering WP.org assets from SVG sources ..."
 
-# Optional: mount the host system cert bundle so apt can reach
-# debian repos through a corporate TLS-intercepting proxy (Netskope
-# etc.). Harmless when the bundle is absent. The `+...` parameter
-# expansion keeps `set -u` happy when the array is empty.
-CERT_MOUNT=()
-if [[ -f /tmp/sys_certs.pem ]]; then
-    CERT_MOUNT=(-v /tmp/sys_certs.pem:/usr/local/share/ca-certificates/sys_certs.crt)
-fi
-
 docker run --rm \
     -v "$OUT_DIR:/work" \
-    ${CERT_MOUNT[@]+"${CERT_MOUNT[@]}"} \
     -w /work \
     debian:stable-slim bash -c '
         set -eu
         export DEBIAN_FRONTEND=noninteractive
-        update-ca-certificates >/dev/null 2>&1 || true
         apt-get update -qq
         apt-get install -y --no-install-recommends \
             librsvg2-bin optipng fonts-inter fontconfig > /dev/null

@@ -6,6 +6,19 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.3] — 2026-10-01
+
+A maintenance release with no change in behaviour: the plugin's code comments describe the monitor API's limits in the API's own terms, and `devstack/smoke.sh` checks the API token before the stack starts and polls for the pings.
+
+### Changed
+
+- The docblocks of `IntervalMonitorBlueprint`, `ManagementClient::createIntervalMonitor()`, `ManagementClient::listChannels()` and the channel-id pattern in `Ajax` state the limits the monitor API accepts (an interval of 30 to 31,622,400 whole seconds, a name of 2 to 120 characters, a grace period of at most a day, channel ids as integers that may exceed PHP's int range) instead of quoting server-side validation rules. Comments only; no code path changes.
+- `devstack/smoke.sh` reads both monitors' ping history in a one-off WP-CLI container before it brings the stack up, so a wrong token or UUID fails within seconds, then starts WordPress, MySQL and WP-CLI itself, layering `docker-compose.local.yml` when `CRONHEART_BACKEND_NETWORK` is set, and waits for WordPress to finish setting up its files. After the cron run it reads the history up to five times, three seconds apart, instead of once. The token reaches the read container on stdin, so it is in neither its arguments nor its environment, and the script stops at once when `build/cronheart.zip` is missing. Nothing that ships in the zip changes.
+- `bin/generate-wp-assets.sh` no longer mounts a CA bundle into its build container. The mount never took effect: the Debian image has no `ca-certificates` package and fetches its packages over plain HTTP.
+- `CLAUDE.md` links the SDK by its public repository.
+- The old changelog entries that described channel ids by a server-side column type or named the backend's repository now describe them in the API's terms.
+- Bumped the plugin header `Version`, `CRONHEART_VERSION` and `readme.txt` `Stable tag` to `0.5.3`.
+
 ## [0.5.2] — 2026-09-30
 
 A patch release: the invalid-token notice names the right cronheart.com page, the release zip's Composer manifest and lock describe the runtime tree only, the test fixtures use zero-family placeholder UUIDs, and `devstack/smoke.sh` no longer carries default UUIDs.
@@ -44,7 +57,7 @@ Two read/manage features on the existing `Api\ManagementClient` + admin-AJAX fou
 
 ### Added
 
-- **`Api\ManagementClient` channel + history wrappers** — `listChannels(): list<Channel>`, `testChannel(string $id): TestChannelResult`, `rotateChannelSecret(string $id): ChannelSecret`, `listPings(string $uuid, int $limit = 50): PingPage`, and `listAlerts(string $uuid, int $limit = 50): AlertPage`. Channel ids are the backend's BIGINT carried as strings and passed through verbatim (never cast); the two history reads return the first page only and never walk the SDK's `allPings()` / `allAlerts()` generators.
+- **`Api\ManagementClient` channel + history wrappers** — `listChannels(): list<Channel>`, `testChannel(string $id): TestChannelResult`, `rotateChannelSecret(string $id): ChannelSecret`, `listPings(string $uuid, int $limit = 50): PingPage`, and `listAlerts(string $uuid, int $limit = 50): AlertPage`. Channel ids are integers carried as strings and passed through verbatim (never cast); the two history reads return the first page only and never walk the SDK's `allPings()` / `allAlerts()` generators.
 - **`Admin\ChannelsScreen`** (Settings → Cronheart Channels) — a table of the account's channels (kind / label / verified) with a "Send test" action on every channel and a "Rotate secret" action on webhook channels only. Token-gated and degrades to a notice with no live controls when no token is configured or the listing fails.
 - **`Admin\HistoryScreen`** (Settings → Cronheart History) — a JavaScript-free GET monitor picker that renders the first page of the selected monitor's pings (kind / received / runtime) and alerts (kind / created / channels notified). The picker submits a SHA-256-derived handle (16 hex characters) of the monitor UUID, matched against the listed monitors, so the UUID never appears in a wp-admin URL; the selection is a read-only display filter that changes no state. The picker lists up to 200 monitors, the same cap as the heartbeat picker.
 - **Two admin-AJAX handlers** on `Admin\Ajax`: `cronheart_test_channel` and `cronheart_rotate_channel_secret`. Both keep the established contract — `check_ajax_referer` + `current_user_can( 'manage_options' )` + boundary validation (channel id against `^[1-9][0-9]*$`, kept a string) + a thrown SDK error mapped to a JSON envelope rather than a fatal — and register no `nopriv` companion. The test handler catches the SDK's `ChannelDeliveryException` ahead of the generic `ApiException` so a 502 delivery failure reports distinctly from a 422 unverified channel; the rotate handler returns the once-only plaintext secret only in its success envelope and never persists or logs it.
@@ -404,8 +417,8 @@ setting the new constants keep the v0.1.0 behaviour (pinging
 - **`devstack/` end-to-end smoke harness.** Two-mode docker-compose
   stack and smoke script for verifying the plugin against either
   production `cronheart.com` (default — public contributors) or a
-  local cron-monitor backend (maintainers only, requires
-  closed-source backend repo). Documented in README.
+  local cronheart backend (maintainers only). Documented in
+  README.
 
 ## [0.1.0] — 2026-05-20
 
