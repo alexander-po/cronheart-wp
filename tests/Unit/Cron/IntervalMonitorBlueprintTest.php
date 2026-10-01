@@ -23,7 +23,7 @@ final class IntervalMonitorBlueprintTest extends TestCase
         self::assertSame('wp-'.hash('sha256', self::SITE.'|wp_version_check'), $bp->idempotencyKey);
     }
 
-    public function test_not_auto_creatable_outside_the_backend_interval_range(): void
+    public function test_not_auto_creatable_outside_the_accepted_interval_range(): void
     {
         self::assertNull(IntervalMonitorBlueprint::fromEvent('h', null, 'UTC', self::SITE), 'one-off (no interval)');
         self::assertNull(IntervalMonitorBlueprint::fromEvent('h', 29, 'UTC', self::SITE), 'sub-30s');
@@ -56,16 +56,16 @@ final class IntervalMonitorBlueprintTest extends TestCase
         yield 'max interval -> capped 86400' => [31_622_400, 86400];
     }
 
-    public function test_name_is_clamped_to_the_backend_length_bounds(): void
+    public function test_name_is_clamped_to_the_accepted_length_bounds(): void
     {
         $long = str_repeat('a', 200);
         $bpLong = IntervalMonitorBlueprint::fromEvent($long, 3600, 'UTC', self::SITE);
         self::assertNotNull($bpLong);
-        self::assertSame(120, mb_strlen($bpLong->name), 'truncated to max:120');
+        self::assertSame(120, mb_strlen($bpLong->name), 'truncated to 120 characters');
 
         $bpShort = IntervalMonitorBlueprint::fromEvent('x', 3600, 'UTC', self::SITE);
         self::assertNotNull($bpShort);
-        self::assertSame('x_', $bpShort->name, 'padded to min:2');
+        self::assertSame('x_', $bpShort->name, 'padded to 2 characters');
     }
 
     public function test_offset_timezone_falls_back_to_utc(): void

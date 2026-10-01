@@ -147,14 +147,14 @@ final class ManagementClient
 
     /**
      * Create an interval monitor for an auto-discovered WP-Cron hook and
-     * return it. The schedule expression is the bare interval in seconds
-     * (the backend validates `ctype_digit`, 30..31,622,400); callers must
-     * pass values already clamped to the backend's ranges (see
+     * return it. The schedule expression is the bare interval in whole
+     * seconds, 30..31,622,400; callers must pass values already inside the
+     * ranges the API accepts (see
      * {@see \Cronheart\WP\Cron\IntervalMonitorBlueprint}). The idempotency
-     * key makes a double-clicked create a safe replay within the backend's
-     * 24h key TTL — but the real duplicate guard is only offering create on
-     * an unmapped hook; a same-key create with a changed body is a `409`
-     * {@see \CronMonitor\Api\Exception\ConflictException}.
+     * key makes a double-clicked create a safe replay for the 24 hours the
+     * API remembers the key — but the real duplicate guard is only offering
+     * create on an unmapped hook; a same-key create with a changed body is a
+     * `409` {@see \CronMonitor\Api\Exception\ConflictException}.
      *
      * @throws \CronMonitor\Api\Exception\ApiException
      */
@@ -174,9 +174,10 @@ final class ManagementClient
     /**
      * The account's notification channels for the channels screen. The
      * channels endpoint returns the full set in one response (no pagination),
-     * so this hands back the bare list. Channel ids are strings (the backend's
-     * BIGINT carried verbatim) — pass them straight back to {@see testChannel}
-     * / {@see rotateChannelSecret}, never cast to int. Sends only the token.
+     * so this hands back the bare list. Channel ids are strings (integers
+     * that may exceed PHP's int range, carried verbatim) — pass them straight
+     * back to {@see testChannel} / {@see rotateChannelSecret}, never cast to
+     * int. Sends only the token.
      *
      * @return list<Channel>
      *

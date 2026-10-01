@@ -93,10 +93,10 @@ final class Ajax
     private const UUID_PATTERN = '/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i';
 
     /**
-     * Channel ids are the backend's BIGINT carried as strings — a positive
-     * integer with no leading zero, matching the SDK's own assertion. Kept as
-     * a string end-to-end (never cast) so a value beyond PHP's int range is
-     * still accepted.
+     * Channel ids are integers carried as strings — a positive integer with
+     * no leading zero, matching the SDK's own assertion. Kept as a string
+     * end-to-end (never cast) so a value beyond PHP's int range is still
+     * accepted.
      */
     private const CHANNEL_ID_PATTERN = '/^[1-9][0-9]*$/';
 

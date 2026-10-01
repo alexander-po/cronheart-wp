@@ -172,7 +172,7 @@ final class ManagementClientTest extends TestCase
         $channels = $management->listChannels();
 
         self::assertCount(2, $channels);
-        self::assertSame('7', $channels[0]->id, 'channel ids stay strings (BIGINT carried verbatim)');
+        self::assertSame('7', $channels[0]->id, 'channel ids stay strings (integers carried verbatim)');
         self::assertSame('webhook', $channels[0]->kind);
         self::assertTrue($channels[0]->verified);
         self::assertSame('On-call email', $channels[1]->label);

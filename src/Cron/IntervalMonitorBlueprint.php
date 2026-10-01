@@ -10,21 +10,24 @@ namespace Cronheart\WP\Cron;
 
 /**
  * The create-request shape for auto-creating an interval monitor from a
- * discovered recurring WP-Cron hook — a pure value object that bakes in the
- * backend's accepted ranges so the request can never round-trip a 422.
+ * discovered recurring WP-Cron hook — a pure value object that keeps every
+ * field inside the ranges the monitor API accepts, so the create request is
+ * never rejected as invalid.
  *
- * Mapping rules (all confirmed against the backend's validation):
+ * Mapping rules:
  *   - **Auto-creatable only when** the interval is present and within
  *     [30, 31,622,400] seconds; a one-off (no interval) or a sub-30s /
  *     over-a-year interval returns null and must be assigned by hand instead.
- *   - **schedule_expr** is the bare interval in seconds (the backend checks
- *     `ctype_digit`); this object carries the int and the API layer stringifies.
- *   - **name** is the hook name, clamped to the backend's `min:2, max:120`.
+ *   - **schedule_expr** is the bare interval in whole seconds, digits only;
+ *     this object carries the int and the API layer stringifies.
+ *   - **name** is the hook name, trimmed, cut to 120 characters and padded
+ *     to at least 2.
  *   - **grace** is `min(86400, max(60, interval / 10))` — a tenth of the
- *     interval, floored at a minute and capped at the backend's `Range(0,86400)`.
+ *     interval, floored at a minute and capped at a day, the API's maximum.
  *   - **idempotency key** is derived from the site URL + hook, so a
- *     double-clicked "create" is a safe replay within the backend's key TTL
- *     (the real duplicate guard is only offering create on an unmapped hook).
+ *     double-clicked "create" is a safe replay while the API remembers the
+ *     key (the real duplicate guard is only offering create on an unmapped
+ *     hook).
  */
 final class IntervalMonitorBlueprint
 {

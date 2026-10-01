@@ -223,15 +223,17 @@ CI runs all four checks plus `composer validate --strict` and
 
 ### End-to-end smoke testing
 
-`devstack/smoke.sh` installs the built plugin into a throwaway
-WordPress, fires the heartbeat tick and a test per-event hook, and
-checks that the backend recorded the pings. The check reads each
-monitor's ping history through the public REST API
+`devstack/smoke.sh` brings up a throwaway WordPress, installs the
+built plugin into it, fires the heartbeat tick and a test per-event
+hook, and checks that the backend recorded the pings. The check reads
+each monitor's ping history through the public REST API
 (`GET /api/v1/monitors/<uuid>/pings`), so it needs an API token; it
-compares the history before and after the run and fails unless the
-heartbeat monitor gained a `heartbeat` ping and the per-event monitor a
-`start` and a `success`. Without a token the script stops short of the
-check and prints what to look for on the dashboard.
+reads the history before the stack starts, so a wrong token or UUID
+fails within seconds, reads it again after the run (up to five times,
+three seconds apart) and fails unless the heartbeat monitor gained a
+`heartbeat` ping and the per-event monitor a `start` and a `success`.
+Without a token the script stops short of the check and prints what to
+look for on the dashboard.
 
 #### A. Against production cronheart.com (public contributors)
 
@@ -243,18 +245,19 @@ check and prints what to look for on the dashboard.
 # 2. Build the plugin zip:
 ./bin/build-release.sh
 
-# 3. Bring up WordPress + MySQL + WP-CLI:
-docker compose -f devstack/docker-compose.yml up -d
-
-# 4. Drive the smoke; the token is read without echo and kept out of
-#    shell history (skip it to verify on the dashboard instead):
-read -rs CRONHEART_API_TOKEN && export CRONHEART_API_TOKEN
+# 3. Drive the smoke; it brings up WordPress + MySQL + WP-CLI itself.
+#    The token is read without echo, kept out of shell history and
+#    passed to this run only (skip it to verify on the dashboard
+#    instead):
+read -rs CRONHEART_API_TOKEN
+CRONHEART_API_TOKEN="$CRONHEART_API_TOKEN" \
 HEARTBEAT_UUID=<your-heartbeat-uuid> \
 EVENT_UUID=<your-event-uuid> \
     ./devstack/smoke.sh
 
-# 5. Tear down:
+# 4. Tear down:
 docker compose -f devstack/docker-compose.yml down -v
+unset CRONHEART_API_TOKEN
 ```
 
 #### B. Against a backend on a local Docker network (maintainers only)
@@ -262,23 +265,19 @@ docker compose -f devstack/docker-compose.yml down -v
 The same script and the same API check, pointed at a backend that
 runs in Docker next to the devstack. Bring the backend up the way its
 own repository documents, create the two monitors and an API token on
-it, then join the devstack to its network.
+it, then pass its network to the smoke so the devstack joins it.
 
 ```bash
 # 1. Build the plugin zip:
 ./bin/build-release.sh
 
-# 2. Bring up WordPress + MySQL + WP-CLI joined to the backend's
-#    Docker network:
-export CRONHEART_BACKEND_NETWORK=<backend-docker-network>
-docker compose \
-    -f devstack/docker-compose.yml \
-    -f devstack/docker-compose.local.yml \
-    up -d
-
-# 3. Drive the smoke against the backend's address on that network.
-#    The script refuses to send a token without TLS unless told to;
-#    only do that with a throwaway token on the local backend:
+# 2. Drive the smoke against the backend's address on its Docker
+#    network; the smoke brings up WordPress + MySQL + WP-CLI joined to
+#    that network. Pass the network per run rather than exporting it,
+#    so a later production run does not join it too. The script refuses
+#    to send a token without TLS unless told to; only do that with a
+#    throwaway token on the local backend:
+CRONHEART_BACKEND_NETWORK=<backend-docker-network> \
 CRONHEART_ENDPOINT=<http://backend-host-on-that-network> \
 HEARTBEAT_UUID=<heartbeat-uuid> \
 EVENT_UUID=<event-uuid> \
@@ -286,8 +285,8 @@ CRONHEART_API_TOKEN=<throwaway-api-token> \
 CRONHEART_ALLOW_INSECURE_TOKEN=1 \
     ./devstack/smoke.sh
 
-# 4. Tear down WordPress (leaves the backend running):
-docker compose \
+# 3. Tear down WordPress (leaves the backend running):
+CRONHEART_BACKEND_NETWORK=<backend-docker-network> docker compose \
     -f devstack/docker-compose.yml \
     -f devstack/docker-compose.local.yml \
     down -v

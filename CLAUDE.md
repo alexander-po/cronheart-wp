@@ -1,10 +1,9 @@
 # CLAUDE.md
 
 Project-specific notes for agents (Claude Code, Cursor, etc.) working in
-this repository. Sibling notes in
-[`../cron-monitor-php/CLAUDE.md`](../cron-monitor-php/CLAUDE.md) cover the
-PHP SDK this plugin bundles, and [`../cron-monitor/CLAUDE.md`](../cron-monitor/CLAUDE.md)
-covers the closed-source backend both ultimately ping.
+this repository. The PHP SDK this plugin bundles keeps its own notes in
+[`alexander-po/cron-monitor-php`](https://github.com/alexander-po/cron-monitor-php);
+both ping the cronheart.com service, which is not open source.
 
 ## What this repo is
 
@@ -29,13 +28,13 @@ WordPress.org Plugin Directory at
 (approved after a multi-round review, see the "WP.org submission
 flow" section for what we hit on the way). PHP ≥ 8.2, WordPress ≥ 6.0.
 
-## The three repos and what flows between them
+## The plugin, the SDK and the service
 
 ```
-cronheart-wp (this)            cron-monitor-php (SDK)        cron-monitor (backend)
-─────────────────              ──────────────────────         ─────────────────────
-WordPress plugin               PHP library on Packagist       Symfony SaaS at cronheart.com
-open-source, GPL-2.0-or-later  open-source, MIT-licensed      closed-source, our monetisation
+cronheart-wp (this)            cron-monitor-php (SDK)        cronheart.com (service)
+─────────────────              ──────────────────────         ───────────────────────
+WordPress plugin               PHP library on Packagist       hosted SaaS
+open-source, GPL-2.0-or-later  open-source, MIT-licensed      closed-source
 bundles the SDK in vendor/     ⇐ this is what we bundle      ← both ping this in production
 ```
 
@@ -178,13 +177,15 @@ care about.
 ## Devstack — two modes
 
 `devstack/` carries a docker-compose harness for end-to-end smoke runs.
-Both modes run the same `devstack/smoke.sh`: it fires the heartbeat
-tick and a test per-event hook, and, when `CRONHEART_API_TOKEN` is set,
-reads both monitors' ping history through the public REST API
-(`GET /api/v1/monitors/<uuid>/pings`) before and after the run. It
-fails unless the heartbeat monitor gained a `heartbeat` ping and the
-per-event monitor a `start` and a `success`; pings on any other monitor
-cannot make it pass. The public repo never names the backend's schema,
+Both modes run the same `devstack/smoke.sh`: it brings the stack up,
+fires the heartbeat tick and a test per-event hook, and, when
+`CRONHEART_API_TOKEN` is set, reads both monitors' ping history through
+the public REST API (`GET /api/v1/monitors/<uuid>/pings`) — once in a
+one-off container before the stack starts, so a bad token or UUID fails
+in seconds, and again after the run, up to five reads three seconds
+apart. It fails unless the heartbeat monitor gained a `heartbeat`
+ping and the per-event monitor a `start` and a `success`; pings on any
+other monitor cannot make it pass. The public repo never names the backend's schema,
 credentials or compose internals: everything backend-specific is an
 input (`CRONHEART_ENDPOINT`, `CRONHEART_BACKEND_NETWORK`, the UUIDs,
 the token).
@@ -194,7 +195,6 @@ the token).
 Pings real `cronheart.com`. Public, doesn't require backend access.
 
 ```bash
-docker compose -f devstack/docker-compose.yml up -d
 HEARTBEAT_UUID=<uuid> EVENT_UUID=<uuid> CRONHEART_API_TOKEN=<token> \
     ./devstack/smoke.sh
 ```
@@ -212,11 +212,7 @@ the run shares no database or network with other sessions, and create
 the two monitors and an API token on it first.
 
 ```bash
-export CRONHEART_BACKEND_NETWORK=<backend-docker-network>
-docker compose \
-    -f devstack/docker-compose.yml \
-    -f devstack/docker-compose.local.yml \
-    up -d
+CRONHEART_BACKEND_NETWORK=<backend-docker-network> \
 CRONHEART_ENDPOINT=<http://backend-host-on-that-network> \
 HEARTBEAT_UUID=<uuid> EVENT_UUID=<uuid> CRONHEART_API_TOKEN=<throwaway-token> \
 CRONHEART_ALLOW_INSECURE_TOKEN=1 ./devstack/smoke.sh
@@ -331,6 +327,8 @@ or re-uploading to WP.org. Catches the same checks the reviewer's
 automated scan runs, locally.
 
 ```bash
+# The stack and the WordPress install come from a smoke run, which leaves
+# them up (see "Devstack" above).
 # Install plugin-check once (download zip on host, docker cp it in):
 docker cp /tmp/plugin-check.zip cronheart-wp-cli:/tmp/plugin-check.zip
 docker compose -f devstack/docker-compose.yml exec -T wp-cli \

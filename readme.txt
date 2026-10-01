@@ -4,7 +4,7 @@ Tags: cron, wp-cron, monitoring, healthcheck, deadman-switch
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 8.2
-Stable tag: 0.5.2
+Stable tag: 0.5.3
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -128,6 +128,9 @@ Open an issue on [GitHub](https://github.com/alexander-po/cronheart-wp/issues).
 
 == Changelog ==
 
+= 0.5.3 =
+* Maintenance release with no change in behaviour. Code comments describe the limits of the cronheart.com monitor API (interval, monitor name length, grace period, channel ids) in the API's own terms. The development smoke script, which is not part of the plugin package, now fails within seconds on a wrong API token or monitor UUID and waits briefly for the pings to show up.
+
 = 0.5.2 =
 * Corrected the notice shown when an API token entered on the settings page is rejected: it now points to Account → API tokens on cronheart.com, where tokens are created, instead of Settings → API Tokens. Wording only; no behaviour change.
 
@@ -209,7 +212,7 @@ Open an issue on [GitHub](https://github.com/alexander-po/cronheart-wp/issues).
 = 0.1.1 =
 * Endpoint override: `CRONHEART_ENDPOINT` constant and `cronheart_endpoint` option for pointing the plugin at a non-production cronheart deployment (staging, private VPC, local backend).
 * `CRONHEART_ALLOW_INSECURE_ENDPOINT` constant / `cronheart_allow_insecure_endpoint` option to opt into plain `http://` endpoints (required for local backends behind `host.docker.internal` or TLS-less private VPNs; default false).
-* Local end-to-end smoke harness under `devstack/` for verifying the plugin against either production cronheart.com (public contributors) or a local cron-monitor backend (maintainers).
+* Local end-to-end smoke harness under `devstack/` for verifying the plugin against either production cronheart.com (public contributors) or a local cronheart backend (maintainers).
 * No breaking changes — installs without the new constants keep the v0.1.0 behaviour.
 
 = 0.1.0 =
@@ -221,6 +224,9 @@ Open an issue on [GitHub](https://github.com/alexander-po/cronheart-wp/issues).
 * PHP fatal-error capture for the fail-ping body.
 
 == Upgrade Notice ==
+
+= 0.5.3 =
+Maintenance release: code comments and development tooling only. No change in behaviour.
 
 = 0.5.2 =
 Corrects the page name in the invalid API token notice: tokens are created under Account → API tokens on cronheart.com. Wording only.
