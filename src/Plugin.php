@@ -51,6 +51,8 @@ use CronMonitor\Client\Configuration;
 final class Plugin
 {
     private const PING_TIMEOUT_SECONDS = 3.0;
+    private const PING_RETRIES = 2;
+    private const API_RETRIES = 1;
 
     public function boot(): void
     {
@@ -176,8 +178,8 @@ final class Plugin
      * constructor throws `\InvalidArgumentException`. We catch and
      * fall back to the production endpoint so the plugin keeps booting
      * — the WP-Cron run must complete even if monitoring is
-     * unreachable. The misconfiguration surfaces through the admin
-     * notice path.
+     * unreachable. The fallback is silent: nothing tells the operator
+     * that pings go to the production host instead of the configured one.
      */
     private static function buildSdkConfiguration(Resolver $resolver): Configuration
     {
@@ -185,12 +187,14 @@ final class Plugin
             return new Configuration(
                 endpoint: $resolver->endpoint() ?? Configuration::DEFAULT_ENDPOINT,
                 timeoutSeconds: self::PING_TIMEOUT_SECONDS,
+                retries: self::PING_RETRIES,
                 allowInsecureEndpoint: $resolver->allowInsecureEndpoint(),
             );
         } catch (\InvalidArgumentException) {
             return new Configuration(
                 endpoint: Configuration::DEFAULT_ENDPOINT,
                 timeoutSeconds: self::PING_TIMEOUT_SECONDS,
+                retries: self::PING_RETRIES,
             );
         }
     }
@@ -203,14 +207,17 @@ final class Plugin
      * least privilege. This config is built only for the admin
      * monitor-picker, lazily, inside the lister closure.
      *
-     * Same endpoint / allow-insecure resolution and the same defensive
-     * fall-back-to-null on a misconfigured endpoint as the runtime config.
+     * Same endpoint / allow-insecure resolution as the runtime config, but
+     * a misconfigured endpoint returns null so the token never reaches the
+     * production host and the picker degrades to manual entry. Retries stay
+     * at one, the count the admin screens had before SDK 1.9.
      */
     private static function buildApiConfiguration(Resolver $resolver, string $token): ?Configuration
     {
         try {
             return new Configuration(
                 endpoint: $resolver->endpoint() ?? Configuration::DEFAULT_ENDPOINT,
+                retries: self::API_RETRIES,
                 apiKey: $token,
                 allowInsecureEndpoint: $resolver->allowInsecureEndpoint(),
             );
