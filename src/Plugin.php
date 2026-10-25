@@ -50,6 +50,8 @@ use CronMonitor\Client\Configuration;
  */
 final class Plugin
 {
+    private const PING_TIMEOUT_SECONDS = 3.0;
+
     public function boot(): void
     {
         $resolver = self::buildResolver();
@@ -161,36 +163,35 @@ final class Plugin
     }
 
     /**
-     * Build the SDK `Configuration` from the resolver's endpoint and
-     * allow-insecure values. Falls back to `null` when the resolver
-     * has nothing to say — `Client::__construct(null)` then uses
-     * `CronMonitorClient::create()` which applies the SDK's defaults
-     * (production `https://cronheart.com`).
+     * Build the SDK `Configuration` for the runtime ping path from the
+     * resolver's endpoint and allow-insecure values.
+     *
+     * The per-attempt timeout is short because a ping that runs inline
+     * (`ALTERNATE_WP_CRON`, or a host that runs cron on the page
+     * request) holds the visitor's request; the SDK's retry waits
+     * together stay within the same value.
      *
      * If the user misconfigures the endpoint (plain `http://` without
      * allow-insecure, malformed URL), the SDK's Configuration
      * constructor throws `\InvalidArgumentException`. We catch and
-     * fall back to defaults so the plugin keeps booting — the WP-Cron
-     * run must complete even if monitoring is unreachable. The
-     * misconfiguration surfaces through the admin notice path in
-     * v0.1.1+; for v0.1.0, the silent fallback keeps the host site
-     * functional.
+     * fall back to the production endpoint so the plugin keeps booting
+     * — the WP-Cron run must complete even if monitoring is
+     * unreachable. The misconfiguration surfaces through the admin
+     * notice path.
      */
-    private static function buildSdkConfiguration(Resolver $resolver): ?Configuration
+    private static function buildSdkConfiguration(Resolver $resolver): Configuration
     {
-        $endpoint = $resolver->endpoint();
-        $allowInsecure = $resolver->allowInsecureEndpoint();
-        if (null === $endpoint && !$allowInsecure) {
-            return null;
-        }
-
         try {
             return new Configuration(
-                endpoint: $endpoint ?? Configuration::DEFAULT_ENDPOINT,
-                allowInsecureEndpoint: $allowInsecure,
+                endpoint: $resolver->endpoint() ?? Configuration::DEFAULT_ENDPOINT,
+                timeoutSeconds: self::PING_TIMEOUT_SECONDS,
+                allowInsecureEndpoint: $resolver->allowInsecureEndpoint(),
             );
         } catch (\InvalidArgumentException) {
-            return null;
+            return new Configuration(
+                endpoint: Configuration::DEFAULT_ENDPOINT,
+                timeoutSeconds: self::PING_TIMEOUT_SECONDS,
+            );
         }
     }
 

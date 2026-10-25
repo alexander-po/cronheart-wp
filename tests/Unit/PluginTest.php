@@ -47,6 +47,30 @@ final class PluginTest extends TestCase
         $factory('cmk_'.str_repeat('a', 43));
     }
 
+    public function test_the_ping_configuration_carries_a_short_timeout_on_every_path(): void
+    {
+        $default = new Resolver(
+            constantReader: static fn (string $name) => null,
+            optionReader: static fn (string $name) => null,
+            filterApplier: static fn (string $name, array $value) => $value,
+        );
+        $malformed = new Resolver(
+            constantReader: static fn (string $name) => match ($name) {
+                Resolver::ENDPOINT_CONSTANT => 'http://cronheart.example.test',
+                default => null,
+            },
+            optionReader: static fn (string $name) => null,
+            filterApplier: static fn (string $name, array $value) => $value,
+        );
+
+        foreach ([$default, $malformed] as $resolver) {
+            $configuration = self::invokePrivateStatic('buildSdkConfiguration', $resolver);
+            self::assertInstanceOf(Configuration::class, $configuration);
+            self::assertSame(3.0, $configuration->timeoutSeconds);
+            self::assertNull($configuration->apiKey);
+        }
+    }
+
     private static function invokePrivateStatic(string $method, Resolver $resolver): mixed
     {
         return (new \ReflectionMethod(Plugin::class, $method))->invoke(null, $resolver);

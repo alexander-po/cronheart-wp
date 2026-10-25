@@ -6,6 +6,10 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- Bumped the bundled `cron-monitor/php-sdk` constraint from `^1.5.2` to `^1.9`; the shipped `vendor/` tree changes by the SDK only. A ping answered with a server error (503 with `Retry-After` included) or a transport error is now tried up to three times, waiting at most the length the server asks for, and a 4xx answer is never retried. The plugin sets the ping timeout to 3 seconds per attempt. A ping that runs inline in a visitor's request (`ALTERNATE_WP_CRON`, or a host that runs cron on the page request) can therefore take at most about 12 seconds when the service is unreachable: three attempts of 3 seconds plus waits that together stay within 3 seconds. The WP-Cron spawn and a real cron run the ping outside the visitor's request. The ping result is still discarded and the WP-Cron run is unaffected.
+
 ## [0.5.3] — 2026-10-01
 
 A maintenance release with no change in behaviour: the plugin's code comments describe the monitor API's limits in the API's own terms, and `devstack/smoke.sh` checks the API token before the stack starts and polls for the pings.
