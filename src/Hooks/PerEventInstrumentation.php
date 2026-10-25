@@ -154,8 +154,7 @@ final class PerEventInstrumentation
         if (!$this->last_error_is_fatal()) {
             return $args;
         }
-        // A warning raised while pinging must not replace the job's fatal
-        // error for the shutdown code that runs after WordPress's handler.
+        // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_set_error_handler -- Not debug code: a warning raised while pinging must not replace the job's fatal error for later shutdown code, and the handler is restored at once.
         set_error_handler(static fn (): bool => true);
         try {
             $this->sweep_in_flight();

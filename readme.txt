@@ -4,7 +4,7 @@ Tags: cron, wp-cron, monitoring, healthcheck, deadman-switch
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 8.2
-Stable tag: 0.5.4
+Stable tag: 0.5.5
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -128,6 +128,9 @@ Open an issue on [GitHub](https://github.com/alexander-po/cronheart-wp/issues).
 
 == Changelog ==
 
+= 0.5.5 =
+* A monitored WP-Cron event that throws or hits a fatal error now sends its `fail` ping when it is run with `wp cron event run` (including `--due-now`), as hosts that drive WP-Cron from a system cron through WP-CLI do. Before, WordPress's own fatal-error handling ended the WP-CLI process before the plugin could send it, so the monitor received a `start` and no `fail` and stayed up. Runs through a page request, `wp-cron.php` or `ALTERNATE_WP_CRON` already sent it. The `fail` is sent once, and the WP-CLI command's output and exit code are unchanged.
+
 = 0.5.4 =
 * A ping that meets a server error or a connection error is now tried up to three times instead of two. After a 503 that carries a whole-second `Retry-After` the bundled SDK waits for it; after any other failure it waits a short fixed step; all waits of one ping stay within the ping timeout, and a 4xx answer is not retried. The ping timeout is now 3 seconds per attempt, so one ping takes at most about 12 seconds when the service keeps answering 503 slowly and about 10 seconds when it is unreachable; a ping sent inline in a visitor's request (`ALTERNATE_WP_CRON`, or a monitored hook fired by a page request) is held for that time. Requests that use your account API token keep one retry. Bundles `cron-monitor/php-sdk` 1.9. The FAQ answer about a blocked host no longer promises a `debug.log` line.
 
@@ -227,6 +230,9 @@ Open an issue on [GitHub](https://github.com/alexander-po/cronheart-wp/issues).
 * PHP fatal-error capture for the fail-ping body.
 
 == Upgrade Notice ==
+
+= 0.5.5 =
+A failing monitored event run with `wp cron event run` now reports `fail` instead of leaving the monitor up. No settings change.
 
 = 0.5.4 =
 Pings are tried up to three times with a 3 second timeout per attempt, and the bundled SDK is updated to 1.9. No settings change.
