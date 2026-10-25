@@ -204,12 +204,13 @@ final class Plugin
      * carrying the account token as `apiKey`. Distinct from
      * `buildSdkConfiguration()` (which stays tokenless): the high-frequency
      * runtime ping path must never carry a write-capable credential —
-     * least privilege. This config is built only for the admin
-     * monitor-picker, lazily, inside the lister closure.
+     * least privilege. This config is built only for admin requests (the
+     * screens and the admin-AJAX actions), lazily, inside the factory.
      *
      * Same endpoint / allow-insecure resolution as the runtime config, but
      * a misconfigured endpoint returns null so the token never reaches the
-     * production host and the picker degrades to manual entry. Retries stay
+     * production host and the factory refuses; the settings picker then falls
+     * back to manual entry. Retries stay
      * at one, the count the admin screens had before SDK 1.9.
      */
     private static function buildApiConfiguration(Resolver $resolver, string $token): ?Configuration
