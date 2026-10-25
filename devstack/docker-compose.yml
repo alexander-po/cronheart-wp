@@ -29,8 +29,8 @@ services:
       wp-mysql:
         condition: service_healthy
     ports:
-      # Host port 8082 to stay clear of other local stacks.
-      - "8082:80"
+      # Host port 8082 to stay clear of other local stacks; loopback only, the install has a fixed admin login.
+      - "127.0.0.1:8082:80"
     environment:
       WORDPRESS_DB_HOST: wp-mysql:3306
       WORDPRESS_DB_USER: wordpress
