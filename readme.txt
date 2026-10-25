@@ -88,7 +88,7 @@ Yes. If you set `define( 'DISABLE_WP_CRON', true );` and trigger `wp-cron.php` f
 
 = What if my host blocks outgoing HTTPS? =
 
-The plugin will retry once (built-in retry budget) and then log a warning to `debug.log`. Your scheduled callbacks still run normally — the plugin never raises an exception that could break the cron runner. To diagnose, check `wp-content/debug.log` for entries beginning with "cron-monitor".
+The plugin will retry up to twice (three attempts in all, each limited to 3 seconds) and then give up. Your scheduled callbacks still run normally — the plugin never raises an exception that could break the cron runner. A ping that never arrives is not logged on the site; the monitor on cronheart.com reports the missed run.
 
 = Do I need a paid cronheart.com account? =
 

@@ -50,6 +50,10 @@ use CronMonitor\Client\Configuration;
  */
 final class Plugin
 {
+    private const PING_TIMEOUT_SECONDS = 3.0;
+    private const PING_RETRIES = 2;
+    private const API_RETRIES = 1;
+
     public function boot(): void
     {
         $resolver = self::buildResolver();
@@ -161,36 +165,37 @@ final class Plugin
     }
 
     /**
-     * Build the SDK `Configuration` from the resolver's endpoint and
-     * allow-insecure values. Falls back to `null` when the resolver
-     * has nothing to say — `Client::__construct(null)` then uses
-     * `CronMonitorClient::create()` which applies the SDK's defaults
-     * (production `https://cronheart.com`).
+     * Build the SDK `Configuration` for the runtime ping path from the
+     * resolver's endpoint and allow-insecure values.
+     *
+     * The per-attempt timeout is short because a ping that runs inline
+     * (`ALTERNATE_WP_CRON`, or a host that runs cron on the page
+     * request) holds the visitor's request; the SDK's retry waits
+     * together stay within the same value.
      *
      * If the user misconfigures the endpoint (plain `http://` without
      * allow-insecure, malformed URL), the SDK's Configuration
      * constructor throws `\InvalidArgumentException`. We catch and
-     * fall back to defaults so the plugin keeps booting — the WP-Cron
-     * run must complete even if monitoring is unreachable. The
-     * misconfiguration surfaces through the admin notice path in
-     * v0.1.1+; for v0.1.0, the silent fallback keeps the host site
-     * functional.
+     * fall back to the production endpoint so the plugin keeps booting
+     * — the WP-Cron run must complete even if monitoring is
+     * unreachable. The fallback is silent: nothing tells the operator
+     * that pings go to the production host instead of the configured one.
      */
-    private static function buildSdkConfiguration(Resolver $resolver): ?Configuration
+    private static function buildSdkConfiguration(Resolver $resolver): Configuration
     {
-        $endpoint = $resolver->endpoint();
-        $allowInsecure = $resolver->allowInsecureEndpoint();
-        if (null === $endpoint && !$allowInsecure) {
-            return null;
-        }
-
         try {
             return new Configuration(
-                endpoint: $endpoint ?? Configuration::DEFAULT_ENDPOINT,
-                allowInsecureEndpoint: $allowInsecure,
+                endpoint: $resolver->endpoint() ?? Configuration::DEFAULT_ENDPOINT,
+                timeoutSeconds: self::PING_TIMEOUT_SECONDS,
+                retries: self::PING_RETRIES,
+                allowInsecureEndpoint: $resolver->allowInsecureEndpoint(),
             );
         } catch (\InvalidArgumentException) {
-            return null;
+            return new Configuration(
+                endpoint: Configuration::DEFAULT_ENDPOINT,
+                timeoutSeconds: self::PING_TIMEOUT_SECONDS,
+                retries: self::PING_RETRIES,
+            );
         }
     }
 
@@ -199,17 +204,21 @@ final class Plugin
      * carrying the account token as `apiKey`. Distinct from
      * `buildSdkConfiguration()` (which stays tokenless): the high-frequency
      * runtime ping path must never carry a write-capable credential —
-     * least privilege. This config is built only for the admin
-     * monitor-picker, lazily, inside the lister closure.
+     * least privilege. This config is built only for admin requests (the
+     * screens and the admin-AJAX actions), lazily, inside the factory.
      *
-     * Same endpoint / allow-insecure resolution and the same defensive
-     * fall-back-to-null on a misconfigured endpoint as the runtime config.
+     * Same endpoint / allow-insecure resolution as the runtime config, but
+     * a misconfigured endpoint returns null so the token never reaches the
+     * production host and the factory refuses; the settings picker then falls
+     * back to manual entry. Retries stay
+     * at one, the count the admin screens had before SDK 1.9.
      */
     private static function buildApiConfiguration(Resolver $resolver, string $token): ?Configuration
     {
         try {
             return new Configuration(
                 endpoint: $resolver->endpoint() ?? Configuration::DEFAULT_ENDPOINT,
+                retries: self::API_RETRIES,
                 apiKey: $token,
                 allowInsecureEndpoint: $resolver->allowInsecureEndpoint(),
             );
