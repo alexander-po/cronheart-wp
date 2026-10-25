@@ -6,12 +6,18 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.4] — 2026-10-25
+
+A ping that meets a server error or a connection error is now tried up to three times, and the ping timeout is 3 seconds per attempt.
+
 ### Changed
 
 - Bumped the bundled `cron-monitor/php-sdk` constraint from `^1.5.2` to `^1.9`; the shipped `vendor/` tree changes by the SDK only. A ping now gets up to three attempts instead of two (the plugin sets this explicitly). After a 503 that carries a whole-second `Retry-After` the SDK waits for it; after a 503 without one, any other server error or a connection error it waits a short fixed step (0.25 s, then 0.5 s). All waits of one ping together stay within the 3 second ping timeout, so a longer `Retry-After` is cut and the last attempt follows without a wait. A 4xx answer is still not retried.
 - The ping timeout is now 3 seconds per attempt (it was 5). One ping used to take at most about 10 seconds (two attempts of 5 seconds); it now takes at most about 12 seconds when the service keeps answering 503 slowly and about 10 seconds when it is unreachable. That figure is per ping, not per request: a run that sends the heartbeat plus a `start` and a `success` for each monitored event waits once for each ping that fails. The WP-Cron spawn and a real cron run send pings outside the visitor's request; a ping sent inline in a visitor's request (`ALTERNATE_WP_CRON`, a host that runs cron on the page request, or a monitored hook fired by a page request) is held for that time. The ping result is still discarded and the WP-Cron run is unaffected.
 - Every account-token request from wp-admin (all screens and the admin-AJAX actions) keeps one retry on the calls the SDK retries; the plugin pins it, since SDK 1.9 raised the SDK's own default to two.
-- The FAQ answer about a host that blocks outgoing HTTPS now says three attempts.
+- The FAQ answer about a host that blocks outgoing HTTPS now says three attempts and no longer promises a `debug.log` line.
+- The development stack publishes WordPress on `127.0.0.1` only (it is not part of the plugin zip).
+- Bumped the plugin header `Version`, `CRONHEART_VERSION` and `readme.txt` `Stable tag` to `0.5.4`.
 
 ## [0.5.3] — 2026-10-01
 

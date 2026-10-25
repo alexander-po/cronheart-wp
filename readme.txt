@@ -4,7 +4,7 @@ Tags: cron, wp-cron, monitoring, healthcheck, deadman-switch
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 8.2
-Stable tag: 0.5.3
+Stable tag: 0.5.4
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -128,6 +128,9 @@ Open an issue on [GitHub](https://github.com/alexander-po/cronheart-wp/issues).
 
 == Changelog ==
 
+= 0.5.4 =
+* A ping that meets a server error or a connection error is now tried up to three times instead of two. After a 503 that carries a whole-second `Retry-After` the bundled SDK waits for it; after any other failure it waits a short fixed step; all waits of one ping stay within the ping timeout, and a 4xx answer is not retried. The ping timeout is now 3 seconds per attempt, so one ping takes at most about 12 seconds when the service keeps answering 503 slowly and about 10 seconds when it is unreachable; a ping sent inline in a visitor's request (`ALTERNATE_WP_CRON`, or a monitored hook fired by a page request) is held for that time. Requests that use your account API token keep one retry. Bundles `cron-monitor/php-sdk` 1.9. The FAQ answer about a blocked host no longer promises a `debug.log` line.
+
 = 0.5.3 =
 * Maintenance release with no change in behaviour. Code comments describe the limits of the cronheart.com monitor API (interval, monitor name length, grace period, channel ids) in the API's own terms. The development smoke script, which is not part of the plugin package, now fails within seconds on a wrong API token or monitor UUID and waits briefly for the pings to show up.
 
@@ -224,6 +227,9 @@ Open an issue on [GitHub](https://github.com/alexander-po/cronheart-wp/issues).
 * PHP fatal-error capture for the fail-ping body.
 
 == Upgrade Notice ==
+
+= 0.5.4 =
+Pings are tried up to three times with a 3 second timeout per attempt, and the bundled SDK is updated to 1.9. No settings change.
 
 = 0.5.3 =
 Maintenance release: code comments and development tooling only. No change in behaviour.
