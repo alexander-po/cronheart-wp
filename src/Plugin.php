@@ -239,6 +239,7 @@ final class Plugin
             $resolver,
             $client,
             actionAdder: static fn (string $hook, callable $cb, int $priority, int $args) => add_action($hook, $cb, $priority, $args),
+            filterAdder: static fn (string $hook, callable $cb, int $priority, int $args) => add_filter($hook, $cb, $priority, $args),
             currentHookName: static function (): ?string {
                 $hook = current_action();
 

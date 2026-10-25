@@ -25,6 +25,12 @@ use Cronheart\WP\Config\Resolver;
  * `error_get_last()` capture so a fatal PHP error surfaces in the
  * fail-ping body on the cronheart dashboard.
  *
+ * WordPress's fatal-error handler is a shutdown function registered before
+ * any plugin, and under WP-CLI its `wp_die()` exits, so PHP never reaches
+ * our shutdown sweep. The `wp_php_error_args` filter, applied just before
+ * that `wp_die()`, runs the sweep too; the sweep empties the in-flight
+ * map, so no fail is sent twice.
+ *
  * Hook-name enumeration: PerEventInstrumentation is asked at
  * `Plugin::boot()` time to instrument a fixed list of names. The
  * list comes from the union of `cronheart_event_map` (option) and
@@ -44,6 +50,8 @@ use Cronheart\WP\Config\Resolver;
  */
 final class PerEventInstrumentation
 {
+    private const FATAL_ERROR_TYPES = \E_ERROR | \E_PARSE | \E_CORE_ERROR | \E_COMPILE_ERROR | \E_USER_ERROR;
+
     /**
      * Hook name → marker. Set by `fire_start` when we ping `start`,
      * cleared by `fire_success` once the user's callbacks complete.
@@ -57,6 +65,8 @@ final class PerEventInstrumentation
     /**
      * @param \Closure(string $hook, callable $callback, int $priority, int $accepted_args): mixed $actionAdder
      *                                                                                                                wraps `add_action`; tests pass a recorder spy
+     * @param \Closure(string $hook, callable $callback, int $priority, int $accepted_args): mixed $filterAdder
+     *                                                                                                                wraps `add_filter`
      * @param \Closure(): ?string                                                                  $currentHookName
      *                                                                                                                returns the name of the currently-firing WP action, or null at boot/shutdown
      *                                                                                                                (wraps `current_action`)
@@ -69,6 +79,7 @@ final class PerEventInstrumentation
         private readonly Resolver $resolver,
         private readonly Client $client,
         private readonly \Closure $actionAdder,
+        private readonly \Closure $filterAdder,
         private readonly \Closure $currentHookName,
         private readonly \Closure $shutdownRegistrar,
         private readonly \Closure $lastErrorReader,
@@ -90,10 +101,11 @@ final class PerEventInstrumentation
             $any = true;
         }
 
-        // Skip the shutdown registration when there's nothing to
-        // monitor — keeps the test suite tidy and saves an unneeded
+        // Skip the filter and shutdown registrations when there's nothing
+        // to monitor — keeps the test suite tidy and saves an unneeded
         // PHP shutdown handler in dev/test runs.
         if ($any) {
+            ($this->filterAdder)('wp_php_error_args', [$this, 'sweep_before_fatal_error_page'], \PHP_INT_MIN, 1);
             ($this->shutdownRegistrar)([$this, 'sweep_in_flight']);
         }
     }
@@ -137,6 +149,23 @@ final class PerEventInstrumentation
         }
     }
 
+    public function sweep_before_fatal_error_page(mixed $args): mixed
+    {
+        if (!$this->last_error_is_fatal()) {
+            return $args;
+        }
+        // A warning raised while pinging must not replace the job's fatal
+        // error for the shutdown code that runs after WordPress's handler.
+        set_error_handler(static fn (): bool => true);
+        try {
+            $this->sweep_in_flight();
+        } finally {
+            restore_error_handler();
+        }
+
+        return $args;
+    }
+
     public function sweep_in_flight(): void
     {
         if ([] === $this->in_flight) {
@@ -144,14 +173,14 @@ final class PerEventInstrumentation
         }
         $body = $this->build_fail_body();
         foreach (array_keys($this->in_flight) as $hook) {
-            $uuid = $this->resolver->eventUuid($hook);
-            if (null === $uuid) {
-                continue;
-            }
             try {
-                $this->client->fail($uuid, $body);
+                $uuid = $this->resolver->eventUuid($hook);
+                if (null !== $uuid) {
+                    $this->client->fail($uuid, $body);
+                }
             } catch (\Throwable) {
-                // Belt-and-suspenders; Client::safely already catches.
+                // The resolver runs third-party code, and this sweep may run
+                // inside WordPress's fatal-error handler.
             }
         }
         $this->in_flight = [];
@@ -164,14 +193,20 @@ final class PerEventInstrumentation
      * since an empty body would hide the failure in the cronheart
      * dashboard's body column.
      */
+    private function last_error_is_fatal(): bool
+    {
+        $last = ($this->lastErrorReader)();
+
+        return null !== $last && 0 !== ($last['type'] & self::FATAL_ERROR_TYPES);
+    }
+
     private function build_fail_body(): string
     {
         $last = ($this->lastErrorReader)();
         if (null === $last) {
             return 'WP-Cron event did not complete (no PHP error captured)';
         }
-        $fatal_mask = \E_ERROR | \E_PARSE | \E_CORE_ERROR | \E_COMPILE_ERROR | \E_USER_ERROR;
-        if (0 === ($last['type'] & $fatal_mask)) {
+        if (!$this->last_error_is_fatal()) {
             return 'WP-Cron event did not complete (last PHP error was non-fatal)';
         }
 

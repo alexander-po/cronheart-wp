@@ -6,6 +6,10 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- A monitored WP-Cron event that throws or hits a fatal error now sends its `fail` ping when it is run with `wp cron event run` (including `--due-now`). WordPress's own fatal-error handler runs before the plugin's shutdown handler and ends in `wp_die()`, which exits under WP-CLI, so the plugin's shutdown handler never ran and the monitor received a `start` with no `fail`. The plugin now also sends the `fail` from the `wp_php_error_args` filter, which that handler applies just before `wp_die()` after a fatal error; the `fail` is still sent once. Runs through a page request, `wp-cron.php` over HTTP or the PHP CLI, and `ALTERNATE_WP_CRON` already sent it. The WP-CLI command's output and exit code are unchanged. A `php-error.php` drop-in or a `wp_php_error_message` callback that exits still prevents the `fail`, as before.
+
 ## [0.5.4] — 2026-10-25
 
 A ping that meets a server error or a connection error is now tried up to three times, and the ping timeout is 3 seconds per attempt.
