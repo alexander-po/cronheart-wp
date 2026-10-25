@@ -4,7 +4,11 @@ declare(strict_types=1);
 
 namespace Cronheart\WP\Tests\Unit;
 
+use Brain\Monkey;
+use Brain\Monkey\Functions;
+use Cronheart\WP\Api\Client;
 use Cronheart\WP\Config\Resolver;
+use Cronheart\WP\Hooks\PerEventInstrumentation;
 use Cronheart\WP\Plugin;
 use CronMonitor\Client\Configuration;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -12,6 +16,18 @@ use PHPUnit\Framework\TestCase;
 
 final class PluginTest extends TestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+        Monkey\setUp();
+    }
+
+    protected function tearDown(): void
+    {
+        Monkey\tearDown();
+        parent::tearDown();
+    }
+
     public function test_plugin_class_is_constructible_without_wp_runtime(): void
     {
         // Bootstrap class itself is side-effect free at construction —
@@ -97,6 +113,24 @@ final class PluginTest extends TestCase
         self::assertInstanceOf(Configuration::class, $configuration);
         self::assertSame(1, $configuration->retries);
         self::assertSame(Configuration::DEFAULT_TIMEOUT_SECONDS, $configuration->timeoutSeconds);
+    }
+
+    public function test_the_per_event_filter_adder_forwards_to_add_filter_in_order(): void
+    {
+        $resolver = new Resolver(
+            constantReader: static fn (string $name) => null,
+            optionReader: static fn (string $name) => null,
+            filterApplier: static fn (string $name, array $value) => $value,
+        );
+        $instrumentation = (new \ReflectionMethod(Plugin::class, 'buildPerEventInstrumentation'))
+            ->invoke(null, $resolver, $this->createMock(Client::class));
+        self::assertInstanceOf(PerEventInstrumentation::class, $instrumentation);
+        $callback = [$instrumentation, 'sweep_before_fatal_error_page'];
+        Functions\expect('add_filter')->once()->with('wp_php_error_args', $callback, \PHP_INT_MIN, 1)->andReturn(true);
+
+        $filterAdder = (new \ReflectionProperty(PerEventInstrumentation::class, 'filterAdder'))->getValue($instrumentation);
+        self::assertInstanceOf(\Closure::class, $filterAdder);
+        self::assertTrue($filterAdder('wp_php_error_args', $callback, \PHP_INT_MIN, 1));
     }
 
     private static function invokePrivateStatic(string $method, Resolver $resolver): mixed
