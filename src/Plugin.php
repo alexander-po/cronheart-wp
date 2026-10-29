@@ -9,9 +9,11 @@ use Cronheart\WP\Admin\ChannelsScreen;
 use Cronheart\WP\Admin\CronEventsScreen;
 use Cronheart\WP\Admin\EventList;
 use Cronheart\WP\Admin\HistoryScreen;
+use Cronheart\WP\Admin\PingsDisabledNotice;
 use Cronheart\WP\Admin\SettingsPage;
 use Cronheart\WP\Api\Client;
 use Cronheart\WP\Api\ManagementClient;
+use Cronheart\WP\Api\PingsDisabledReason;
 use Cronheart\WP\Config\Resolver;
 use Cronheart\WP\Cron\EventDiscovery;
 use Cronheart\WP\Hooks\HeartbeatHandler;
@@ -57,7 +59,10 @@ final class Plugin
     public function boot(): void
     {
         $resolver = self::buildResolver();
-        $client = new Client(self::buildSdkConfiguration($resolver));
+        [$client, $pingsDisabledReason] = self::buildClient($resolver);
+        if (null !== $pingsDisabledReason) {
+            (new PingsDisabledNotice($pingsDisabledReason, $resolver))->register();
+        }
         $heartbeat = new HeartbeatHandler($resolver, $client);
         $perEvent = self::buildPerEventInstrumentation($resolver, $client);
 
@@ -77,7 +82,7 @@ final class Plugin
         // every other plugin's own `cronheart_monitor()` calls have
         // landed by the time we read the filter map.
         add_action('plugins_loaded', static function () use ($perEvent, $resolver): void {
-            $perEvent->register($resolver->eventHookNames());
+            self::registerPerEventHooks($perEvent, $resolver);
         }, \PHP_INT_MAX);
 
         // Admin Settings → Cronheart, plus the monitor-lifecycle AJAX
@@ -96,6 +101,54 @@ final class Plugin
         (new ChannelsScreen($resolver, $managementClientFactory, $pluginFile))->register();
         (new HistoryScreen($resolver, $managementClientFactory))->register();
         (new Ajax($resolver, $managementClientFactory, $eventDiscovery))->register();
+    }
+
+    /**
+     * The hook enumeration runs third-party option and filter code on every
+     * request; a throw from it would end the request, so a failed
+     * enumeration monitors no event for that request.
+     */
+    private static function registerPerEventHooks(PerEventInstrumentation $perEvent, Resolver $resolver): void
+    {
+        try {
+            $hookNames = $resolver->eventHookNames();
+        } catch (\Throwable) {
+            return;
+        }
+
+        $perEvent->register($hookNames);
+    }
+
+    /**
+     * Build the runtime ping client without ever throwing: this runs on every
+     * request, so a throw here would take the whole site down. A rejected
+     * endpoint, or an SDK that cannot build its transport (the curl extension
+     * missing), yields a client that sends nothing, plus the reason for the
+     * wp-admin notice.
+     *
+     * @param (\Closure(Configuration): Client)|null $createClient
+     * @param (\Closure(): bool)|null                $curlLoaded
+     *
+     * @return array{Client, ?PingsDisabledReason}
+     */
+    private static function buildClient(Resolver $resolver, ?\Closure $createClient = null, ?\Closure $curlLoaded = null): array
+    {
+        $createClient ??= static fn (Configuration $configuration): Client => Client::create($configuration);
+        $curlLoaded ??= static fn (): bool => \extension_loaded('curl');
+
+        try {
+            $configuration = self::buildSdkConfiguration($resolver);
+            if (null === $configuration) {
+                return [Client::disabled(), PingsDisabledReason::EndpointRejected];
+            }
+
+            return [$createClient($configuration), null];
+        } catch (\Throwable) {
+            return [
+                Client::disabled(),
+                $curlLoaded() ? PingsDisabledReason::ClientUnavailable : PingsDisabledReason::CurlMissing,
+            ];
+        }
     }
 
     /**
@@ -173,29 +226,25 @@ final class Plugin
      * request) holds the visitor's request; the SDK's retry waits
      * together stay within the same value.
      *
-     * If the user misconfigures the endpoint (plain `http://` without
-     * allow-insecure, malformed URL), the SDK's Configuration
-     * constructor throws `\InvalidArgumentException`. We catch and
-     * fall back to the production endpoint so the plugin keeps booting
-     * — the WP-Cron run must complete even if monitoring is
-     * unreachable. The fallback is silent: nothing tells the operator
-     * that pings go to the production host instead of the configured one.
+     * An endpoint the SDK's `Configuration` rejects (plain `http://`
+     * without allow-insecure, no scheme) returns null: the plugin then
+     * sends no pings rather than sending the monitor uuids to a host the
+     * operator did not configure.
      */
-    private static function buildSdkConfiguration(Resolver $resolver): Configuration
+    private static function buildSdkConfiguration(Resolver $resolver): ?Configuration
     {
+        $endpoint = $resolver->endpoint() ?? Configuration::DEFAULT_ENDPOINT;
+        $allowInsecureEndpoint = $resolver->allowInsecureEndpoint();
+
         try {
             return new Configuration(
-                endpoint: $resolver->endpoint() ?? Configuration::DEFAULT_ENDPOINT,
+                endpoint: $endpoint,
                 timeoutSeconds: self::PING_TIMEOUT_SECONDS,
                 retries: self::PING_RETRIES,
-                allowInsecureEndpoint: $resolver->allowInsecureEndpoint(),
+                allowInsecureEndpoint: $allowInsecureEndpoint,
             );
         } catch (\InvalidArgumentException) {
-            return new Configuration(
-                endpoint: Configuration::DEFAULT_ENDPOINT,
-                timeoutSeconds: self::PING_TIMEOUT_SECONDS,
-                retries: self::PING_RETRIES,
-            );
+            return null;
         }
     }
 

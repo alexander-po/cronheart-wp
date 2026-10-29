@@ -20,6 +20,7 @@
     },
     "require": {
         "php": ">=8.2",
+        "ext-curl": "*",
         "cron-monitor/php-sdk": "^1.9"
     },
     "require-dev": {

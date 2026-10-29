@@ -66,6 +66,8 @@ The plugin wraps the [`cron-monitor/php-sdk`](https://github.com/alexander-po/cr
 
 == Installation ==
 
+The plugin needs PHP 8.2 or later with the cURL extension (`curl`), which most hosts enable. Without the extension the plugin sends no pings and shows an error notice in wp-admin.
+
 1. Install the plugin: **WP Admin → Plugins → Add New →** search for "Cronheart" → **Install Now → Activate.** Or upload `cronheart.zip` from a GitHub release.
 2. Sign up at [cronheart.com](https://cronheart.com) and create a monitor for your site's heartbeat. Copy the monitor UUID from the dashboard.
 3. Configure the UUID. Either add it to `wp-config.php` with `define( 'CRONHEART_HEARTBEAT_UUID', 'xxxxxxxx-…' );` (recommended), or paste it under **Settings → Cronheart** in the WP admin.
@@ -112,7 +114,7 @@ No. The plugin sends a ping to cronheart only when you have configured a monitor
 
 = Can I point the plugin at a non-production cronheart deployment (staging / private / self-hosted)? =
 
-Yes. Define `CRONHEART_ENDPOINT` in `wp-config.php` with the URL of your alternate deployment. For plain `http://` endpoints (local development, private VPNs without TLS) also set `CRONHEART_ALLOW_INSECURE_ENDPOINT` to `true`. With both unset, the plugin pings the production cronheart.com over HTTPS. The API token is only ever sent over HTTPS, so with a plain `http://` endpoint the settings screens fall back to manual UUID entry while pings keep working.
+Yes. Define `CRONHEART_ENDPOINT` in `wp-config.php` with the URL of your alternate deployment. For plain `http://` endpoints (local development, private VPNs without TLS) also set `CRONHEART_ALLOW_INSECURE_ENDPOINT` to `true`. With both unset, the plugin pings the production cronheart.com over HTTPS. The API token is only ever sent over HTTPS, so with a plain `http://` endpoint the settings screens fall back to manual UUID entry while pings keep working. An endpoint the plugin does not accept (one with no `http://` or `https://` scheme, or plain `http://` without `CRONHEART_ALLOW_INSECURE_ENDPOINT`) stops all pings and shows an error notice in wp-admin; the plugin does not send them to cronheart.com instead. An empty `CRONHEART_ENDPOINT` means cronheart.com even when the `cronheart_endpoint` option is set, and a `CRONHEART_ENDPOINT` that is not a string is ignored.
 
 = Where can I report bugs or request features? =
 

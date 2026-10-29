@@ -228,24 +228,28 @@ final class Resolver
      * and the canonical truthy / falsy string forms `'true'`,
      * `'false'`, `'1'`, `'0'`, `'yes'`, `'no'` — the latter useful
      * when the value flows through environment-variable expansion in
-     * the wp-config.php loader.
+     * the wp-config.php loader. The option is read the same way, so a
+     * stored `'false'` or `'no'` keeps plain HTTP refused; any value
+     * that is not a recognised truthy form counts as false.
      */
     public function allowInsecureEndpoint(): bool
     {
-        $fromConstant = ($this->constantReader)(self::ALLOW_INSECURE_CONSTANT);
-        if (\is_bool($fromConstant)) {
+        $fromConstant = self::parseFlag(($this->constantReader)(self::ALLOW_INSECURE_CONSTANT));
+        if (null !== $fromConstant) {
             return $fromConstant;
         }
-        if (\is_string($fromConstant) && '' !== $fromConstant) {
-            return (bool) filter_var($fromConstant, \FILTER_VALIDATE_BOOLEAN);
-        }
-        if (\is_int($fromConstant)) {
-            return 0 !== $fromConstant;
-        }
 
-        $fromOption = ($this->optionReader)(self::ALLOW_INSECURE_OPTION);
+        return self::parseFlag(($this->optionReader)(self::ALLOW_INSECURE_OPTION)) ?? false;
+    }
 
-        return (bool) $fromOption;
+    /**
+     * Whether {@see endpoint()} reads the `CRONHEART_ENDPOINT` constant, which
+     * outranks the option; the wp-admin notice for a rejected endpoint names
+     * the place to fix.
+     */
+    public function endpointIsConstant(): bool
+    {
+        return \is_string(($this->constantReader)(self::ENDPOINT_CONSTANT));
     }
 
     /**
@@ -290,6 +294,26 @@ final class Resolver
     public function apiTokenIsConstant(): bool
     {
         return \is_string(($this->constantReader)(self::API_TOKEN_CONSTANT));
+    }
+
+    /**
+     * Null when the value states no choice (unset, an empty string, or a
+     * type a flag never has), so the caller can fall through to the next
+     * source.
+     */
+    private static function parseFlag(mixed $value): ?bool
+    {
+        if (\is_bool($value)) {
+            return $value;
+        }
+        if (\is_string($value) && '' !== $value) {
+            return (bool) filter_var($value, \FILTER_VALIDATE_BOOLEAN);
+        }
+        if (\is_int($value)) {
+            return 0 !== $value;
+        }
+
+        return null;
     }
 
     /**

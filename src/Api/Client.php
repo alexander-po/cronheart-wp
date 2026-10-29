@@ -39,40 +39,62 @@ use CronMonitor\Client\PingResult;
  */
 class Client
 {
-    private readonly CronMonitorClient $sdk;
+    public const DISABLED_MESSAGE = 'Cronheart pings are disabled on this site';
 
-    public function __construct(?Configuration $configuration = null)
+    /**
+     * A null SDK client makes every call a no-op that reports a failed
+     * ping without sending anything; see {@see disabled()}.
+     */
+    private function __construct(private readonly ?CronMonitorClient $sdk)
     {
-        $this->sdk = CronMonitorClient::create($configuration);
+    }
+
+    /**
+     * Throws when the SDK cannot build its transport, for example when the
+     * curl extension is not loaded; `Plugin::boot()` catches that and falls
+     * back to {@see disabled()}.
+     */
+    public static function create(Configuration $configuration): self
+    {
+        return new self(CronMonitorClient::create($configuration));
+    }
+
+    public static function disabled(): self
+    {
+        return new self(null);
     }
 
     public function heartbeat(string $uuid, ?string $body = null): PingResult
     {
-        return $this->safely(fn (): PingResult => $this->sdk->heartbeat($uuid, $body));
+        return $this->safely(static fn (CronMonitorClient $sdk): PingResult => $sdk->heartbeat($uuid, $body));
     }
 
     public function start(string $uuid): PingResult
     {
-        return $this->safely(fn (): PingResult => $this->sdk->start($uuid));
+        return $this->safely(static fn (CronMonitorClient $sdk): PingResult => $sdk->start($uuid));
     }
 
     public function success(string $uuid, ?string $body = null): PingResult
     {
-        return $this->safely(fn (): PingResult => $this->sdk->success($uuid, $body));
+        return $this->safely(static fn (CronMonitorClient $sdk): PingResult => $sdk->success($uuid, $body));
     }
 
     public function fail(string $uuid, ?string $body = null): PingResult
     {
-        return $this->safely(fn (): PingResult => $this->sdk->fail($uuid, $body));
+        return $this->safely(static fn (CronMonitorClient $sdk): PingResult => $sdk->fail($uuid, $body));
     }
 
     /**
-     * @param \Closure(): PingResult $call
+     * @param \Closure(CronMonitorClient): PingResult $call
      */
     private function safely(\Closure $call): PingResult
     {
+        if (null === $this->sdk) {
+            return PingResult::failed(null, self::DISABLED_MESSAGE, 0);
+        }
+
         try {
-            return $call();
+            return $call($this->sdk);
         } catch (\Throwable $error) {
             // The SDK swallows network / HTTP errors already; this
             // catch handles the pathological case where a custom

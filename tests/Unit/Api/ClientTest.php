@@ -15,9 +15,9 @@ final class ClientTest extends \PHPUnit\Framework\TestCase
         // Smoke test: the bundled SDK resolves through the plugin's
         // autoloader (no Strauss prefixing yet — deferred pending a
         // first reported collision, see Client.php docblock), and
-        // `CronMonitorClient::create()` builds with no arguments
-        // (default SaaS endpoint + bundled cURL transport).
-        $client = new Client();
+        // `CronMonitorClient::create()` builds with the default SaaS
+        // endpoint and the bundled cURL transport.
+        $client = Client::create(Configuration::withDefaultEndpoint());
 
         self::assertInstanceOf(Client::class, $client);
     }
@@ -30,7 +30,7 @@ final class ClientTest extends \PHPUnit\Framework\TestCase
         // failed PingResult instead of escaping an exception.
         // Mirrors the SDK's CurlPsr18ClientTest assertion at the
         // wrapper boundary.
-        $client = new Client(new Configuration(
+        $client = Client::create(new Configuration(
             endpoint: 'http://127.0.0.1:1',
             timeoutSeconds: 1.0,
             retries: 0,
@@ -40,6 +40,18 @@ final class ClientTest extends \PHPUnit\Framework\TestCase
         $result = $client->heartbeat('00000000-0000-0000-0000-000000000001');
 
         self::assertFalse($result->delivered);
+    }
+
+    public function test_a_disabled_client_reports_every_ping_as_failed_without_an_attempt(): void
+    {
+        $client = Client::disabled();
+        $uuid = '00000000-0000-0000-0000-000000000001';
+
+        foreach ([$client->heartbeat($uuid), $client->start($uuid), $client->success($uuid), $client->fail($uuid, 'body')] as $result) {
+            self::assertFalse($result->delivered);
+            self::assertSame(0, $result->attempts);
+            self::assertSame(Client::DISABLED_MESSAGE, $result->errorMessage);
+        }
     }
 
     public function test_wp_config_uuid_with_trailing_newline_is_refused_before_any_request(): void
@@ -54,7 +66,7 @@ final class ClientTest extends \PHPUnit\Framework\TestCase
             optionReader: static fn (string $name) => null,
             filterApplier: static fn (string $name, array $value) => $value,
         );
-        $client = new Client(new Configuration(
+        $client = Client::create(new Configuration(
             endpoint: 'http://127.0.0.1:1',
             timeoutSeconds: 1.0,
             retries: 0,

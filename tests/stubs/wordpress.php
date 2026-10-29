@@ -44,6 +44,11 @@ namespace {
         return true;
     }
 
+    function has_action(string $hook_name, callable|string|array|false $callback = false): bool|int
+    {
+        return false;
+    }
+
     function add_filter(string $hook_name, callable $callback, int $priority = 10, int $accepted_args = 1): bool
     {
         return true;
