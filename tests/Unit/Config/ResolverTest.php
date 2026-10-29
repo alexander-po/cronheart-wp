@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Cronheart\WP\Tests\Unit\Config;
 
 use Cronheart\WP\Config\Resolver;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 final class ResolverTest extends TestCase
@@ -258,6 +259,100 @@ final class ResolverTest extends TestCase
             constants: [],
             options: [Resolver::ALLOW_INSECURE_OPTION => ''],
         )->allowInsecureEndpoint());
+    }
+
+    /**
+     * @return array<string, array{0: mixed, 1: bool}>
+     */
+    public static function allowInsecureOptionValues(): array
+    {
+        return [
+            'string false' => ['false', false],
+            'string no' => ['no', false],
+            'string off' => ['off', false],
+            'zero with a trailing space' => ['0 ', false],
+            'string zero' => ['0', false],
+            'unparseable string' => ['garbage', false],
+            'empty string' => ['', false],
+            'non-empty array' => [['1'], false],
+            'native false' => [false, false],
+            'string one' => ['1', true],
+            'string true' => ['true', true],
+            'string yes' => ['yes', true],
+            'string on' => ['on', true],
+            'native true' => [true, true],
+        ];
+    }
+
+    #[DataProvider('allowInsecureOptionValues')]
+    public function test_allow_insecure_option_is_parsed_like_the_constant(mixed $stored, bool $expected): void
+    {
+        self::assertSame($expected, $this->buildResolver(
+            constants: [],
+            options: [Resolver::ALLOW_INSECURE_OPTION => $stored],
+        )->allowInsecureEndpoint());
+    }
+
+    /**
+     * @return array<string, array{0: mixed}>
+     */
+    public static function allowInsecureConstantValues(): array
+    {
+        $values = [true, false, 'true', 'false', '1', '0', 'yes', 'no', 'on', 'off', '', ' 1', '0 ', 'TRUE', 'garbage', 0, 1, 2, -1, 1.0, 0.0, null, []];
+        $cases = [];
+        foreach ($values as $value) {
+            $cases[var_export($value, true)] = [$value];
+        }
+
+        return $cases;
+    }
+
+    #[DataProvider('allowInsecureConstantValues')]
+    public function test_every_constant_value_keeps_the_meaning_it_had_before_the_option_parser_changed(mixed $constant): void
+    {
+        $before = static function (mixed $fromConstant, mixed $fromOption): bool {
+            if (\is_bool($fromConstant)) {
+                return $fromConstant;
+            }
+            if (\is_string($fromConstant) && '' !== $fromConstant) {
+                return (bool) filter_var($fromConstant, \FILTER_VALIDATE_BOOLEAN);
+            }
+            if (\is_int($fromConstant)) {
+                return 0 !== $fromConstant;
+            }
+
+            return (bool) $fromOption;
+        };
+
+        foreach (['1', '', null] as $option) {
+            self::assertSame(
+                $before($constant, $option),
+                $this->buildResolver(
+                    constants: [Resolver::ALLOW_INSECURE_CONSTANT => $constant],
+                    options: [Resolver::ALLOW_INSECURE_OPTION => $option],
+                )->allowInsecureEndpoint(),
+                'with the option '.var_export($option, true),
+            );
+        }
+    }
+
+    public function test_endpoint_is_constant_only_when_the_constant_is_a_string(): void
+    {
+        self::assertTrue($this->buildResolver(
+            constants: [Resolver::ENDPOINT_CONSTANT => 'https://cronheart.example.test'],
+            options: [],
+        )->endpointIsConstant());
+        self::assertFalse($this->buildResolver(
+            constants: [],
+            options: [Resolver::ENDPOINT_OPTION => 'https://cronheart.example.test'],
+        )->endpointIsConstant());
+
+        $nonStringConstant = $this->buildResolver(
+            constants: [Resolver::ENDPOINT_CONSTANT => false],
+            options: [Resolver::ENDPOINT_OPTION => 'http://cronheart.example.test'],
+        );
+        self::assertFalse($nonStringConstant->endpointIsConstant());
+        self::assertSame('http://cronheart.example.test', $nonStringConstant->endpoint());
     }
 
     public function test_api_token_constant_wins_over_option(): void

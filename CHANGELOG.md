@@ -6,6 +6,17 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- A server without the PHP cURL extension no longer gets a fatal error on every request. The plugin then sends no pings and shows an error notice in wp-admin to users who can manage options. `composer.json` now requires `ext-curl`.
+- A `cronheart_monitor_map` filter callback or an option filter that throws while the plugin looks up a monitored WP-Cron event's UUID no longer breaks the run: at the event's start it stopped the event's own callbacks, and at its end it ended the rest of that WP-Cron run or WP-CLI command. The plugin now skips that event's ping instead. A filter that throws while the plugin collects the monitored hooks at `plugins_loaded` (including an earlier `cronheart_monitor_map` callback returning a non-array into the `cronheart_monitor()` helper) no longer ends every request, WP-Cron included; the plugin then monitors no event for that request.
+- The `cronheart_allow_insecure_endpoint` option is read like the `CRONHEART_ALLOW_INSECURE_ENDPOINT` constant: a stored `false`, `no`, `off`, `0 ` and any other value that is not a recognised truthy form keep plain `http://` refused. Before, any non-empty value other than `0` allowed it. The constant reads every value as before.
+
+### Changed
+
+- An endpoint setting the plugin rejects (one with no `http://` or `https://` scheme, or plain `http://` without `CRONHEART_ALLOW_INSECURE_ENDPOINT`) now stops all pings and shows an error notice in wp-admin, naming whether the `CRONHEART_ENDPOINT` constant or the `cronheart_endpoint` option holds it. Before, pings and the monitor UUIDs in them silently went to cronheart.com instead of the configured host. An empty endpoint setting still means cronheart.com.
+- The plugin's internal `Cronheart\WP\Api\Client` is built with `Client::create()`, which needs a `Configuration`, or `Client::disabled()`; its constructor is private.
+
 ## [0.5.5] — 2026-10-25
 
 A monitored WP-Cron event that fails now reports `fail` when it is run through WP-CLI.

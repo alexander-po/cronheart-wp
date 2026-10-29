@@ -116,15 +116,16 @@ final class PerEventInstrumentation
         if (null === $hook || '' === $hook) {
             return;
         }
-        $uuid = $this->resolver->eventUuid($hook);
-        if (null === $uuid) {
-            return;
-        }
-        $this->in_flight[$hook] = true;
         try {
+            $uuid = $this->resolver->eventUuid($hook);
+            if (null === $uuid) {
+                return;
+            }
+            $this->in_flight[$hook] = true;
             $this->client->start($uuid);
         } catch (\Throwable) {
-            // Belt-and-suspenders; Client::safely already catches.
+            // The resolver runs third-party code, and a throw from this
+            // first callback would stop the job's own callbacks.
         }
     }
 
@@ -138,14 +139,13 @@ final class PerEventInstrumentation
             return;
         }
         unset($this->in_flight[$hook]);
-        $uuid = $this->resolver->eventUuid($hook);
-        if (null === $uuid) {
-            return;
-        }
         try {
-            $this->client->success($uuid);
+            $uuid = $this->resolver->eventUuid($hook);
+            if (null !== $uuid) {
+                $this->client->success($uuid);
+            }
         } catch (\Throwable) {
-            // Belt-and-suspenders; Client::safely already catches.
+            // The resolver runs third-party code.
         }
     }
 

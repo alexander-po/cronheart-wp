@@ -108,6 +108,70 @@ final class PerEventInstrumentationTest extends TestCase
         $instrumentation->fire_start();
     }
 
+    public function test_a_throwing_resolver_in_fire_start_lets_the_job_run_and_leaves_nothing_in_flight(): void
+    {
+        $client = $this->createMock(Client::class);
+        $client->expects(self::never())->method('start');
+        $client->expects(self::never())->method('fail');
+
+        $reads = 0;
+        $instrumentation = new PerEventInstrumentation(
+            resolver: new Resolver(
+                constantReader: static fn (string $name): ?string => null,
+                optionReader: static function (string $name) use (&$reads): array {
+                    if (1 === ++$reads) {
+                        throw new \RuntimeException('third-party option filter broke');
+                    }
+
+                    return [self::HOOK => self::UUID];
+                },
+                filterApplier: static fn (string $name, array $value) => $value,
+            ),
+            client: $client,
+            actionAdder: static fn (string $h, callable $c, int $p, int $a): bool => true,
+            filterAdder: static fn (string $h, callable $c, int $p, int $a): bool => true,
+            currentHookName: static fn (): string => self::HOOK,
+            shutdownRegistrar: static fn (callable $c): mixed => null,
+            lastErrorReader: static fn (): ?array => null,
+        );
+
+        $instrumentation->fire_start();
+        $instrumentation->sweep_in_flight();
+    }
+
+    public function test_a_throwing_resolver_in_fire_success_is_swallowed_and_clears_the_hook(): void
+    {
+        $client = $this->createMock(Client::class);
+        $client->expects(self::once())->method('start')->with(self::UUID);
+        $client->expects(self::never())->method('success');
+        $client->expects(self::never())->method('fail');
+
+        $reads = 0;
+        $instrumentation = new PerEventInstrumentation(
+            resolver: new Resolver(
+                constantReader: static fn (string $name): ?string => null,
+                optionReader: static function (string $name) use (&$reads): array {
+                    if (2 === ++$reads) {
+                        throw new \RuntimeException('third-party option filter broke');
+                    }
+
+                    return [self::HOOK => self::UUID];
+                },
+                filterApplier: static fn (string $name, array $value) => $value,
+            ),
+            client: $client,
+            actionAdder: static fn (string $h, callable $c, int $p, int $a): bool => true,
+            filterAdder: static fn (string $h, callable $c, int $p, int $a): bool => true,
+            currentHookName: static fn (): string => self::HOOK,
+            shutdownRegistrar: static fn (callable $c): mixed => null,
+            lastErrorReader: static fn (): ?array => null,
+        );
+
+        $instrumentation->fire_start();
+        $instrumentation->fire_success();
+        $instrumentation->sweep_in_flight();
+    }
+
     public function test_start_then_success_fires_both_pings_and_clears_in_flight(): void
     {
         $client = $this->createMock(Client::class);
