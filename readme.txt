@@ -4,7 +4,7 @@ Tags: cron, wp-cron, monitoring, healthcheck, deadman-switch
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 8.2
-Stable tag: 0.5.5
+Stable tag: 0.5.6
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -130,6 +130,13 @@ Open an issue on [GitHub](https://github.com/alexander-po/cronheart-wp/issues).
 
 == Changelog ==
 
+= 0.5.6 =
+* A server without the PHP cURL extension no longer gets a fatal error on every request. The plugin then sends no pings and shows an error notice in wp-admin to users who can manage options.
+* An endpoint setting the plugin rejects (no `http://` or `https://` scheme, or plain `http://` without `CRONHEART_ALLOW_INSECURE_ENDPOINT`) now stops all pings and shows an error notice in wp-admin naming the constant or option that holds it. Before, the pings and the monitor UUIDs in them went to cronheart.com instead of the configured host.
+* A third-party filter that throws while the plugin reads its monitor settings no longer stops a monitored WP-Cron event's own callbacks, ends the rest of the run, or ends every request; the plugin skips the affected ping instead.
+* The `cronheart_allow_insecure_endpoint` option now reads `false`, `no`, `off` and any unrecognised value as false, like the `CRONHEART_ALLOW_INSECURE_ENDPOINT` constant.
+* With `WP_DEBUG` and `WP_DEBUG_LOG` on, each failed ping writes one line to the debug log, including a ping the service refuses (such as one with a wrong monitor UUID). The line never holds a monitor UUID, an API token or a full URL.
+
 = 0.5.5 =
 * A monitored WP-Cron event that throws or hits a fatal error now sends its `fail` ping when it is run with `wp cron event run` (including `--due-now`), as hosts that drive WP-Cron from a system cron through WP-CLI do. Before, WordPress's own fatal-error handling ended the WP-CLI process before the plugin could send it, so the monitor received a `start` and no `fail` and stayed up. Runs through a page request, `wp-cron.php` or `ALTERNATE_WP_CRON` already sent it. The `fail` is sent once, and the WP-CLI command's output and exit code are unchanged.
 
@@ -232,6 +239,9 @@ Open an issue on [GitHub](https://github.com/alexander-po/cronheart-wp/issues).
 * PHP fatal-error capture for the fail-ping body.
 
 == Upgrade Notice ==
+
+= 0.5.6 =
+An endpoint setting the plugin does not accept now stops pings, with an error notice in wp-admin, instead of sending them to cronheart.com. Also: no fatal error without the cURL extension, and failed pings in the debug log.
 
 = 0.5.5 =
 A failing monitored event run with `wp cron event run` now reports `fail` instead of leaving the monitor up. No settings change.
