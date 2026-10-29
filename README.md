@@ -224,22 +224,26 @@ CI runs all four checks plus `composer validate --strict` and
 ### End-to-end smoke testing
 
 `devstack/smoke.sh` brings up a throwaway WordPress, installs the
-built plugin into it, fires the heartbeat tick and a test per-event
-hook, and checks that the backend recorded the pings. The check reads
+built plugin into it, fires the heartbeat tick, a test per-event hook
+that succeeds and one that throws, and checks that the backend recorded
+the pings. The check reads
 each monitor's ping history through the public REST API
 (`GET /api/v1/monitors/<uuid>/pings`), so it needs an API token; it
 reads the history before the stack starts, so a wrong token or UUID
 fails within seconds, reads it again after the run (up to five times,
 three seconds apart) and fails unless the heartbeat monitor gained a
-`heartbeat` ping and the per-event monitor a `start` and a `success`.
+`heartbeat` ping, the per-event monitor a `start` and a `success`, and
+the failing event's monitor a `start` and exactly one `fail`. The
+failing run must also make `wp cron event run` exit non-zero.
 Without a token the script stops short of the check and prints what to
 look for on the dashboard.
 
 #### A. Against production cronheart.com (public contributors)
 
 ```bash
-# 1. Sign up at https://cronheart.com and create two monitors:
-#    one for the site heartbeat, one for a test per-event hook.
+# 1. Sign up at https://cronheart.com and create three monitors:
+#    one for the site heartbeat, one for a test per-event hook and one
+#    for a test hook that fails.
 #    Copy each UUID, and create an API token (Account → API tokens).
 
 # 2. Build the plugin zip:
@@ -253,6 +257,7 @@ read -rs CRONHEART_API_TOKEN
 CRONHEART_API_TOKEN="$CRONHEART_API_TOKEN" \
 HEARTBEAT_UUID=<your-heartbeat-uuid> \
 EVENT_UUID=<your-event-uuid> \
+FAIL_EVENT_UUID=<your-failing-event-uuid> \
     ./devstack/smoke.sh
 
 # 4. Tear down:
@@ -264,8 +269,8 @@ unset CRONHEART_API_TOKEN
 
 The same script and the same API check, pointed at a backend that
 runs in Docker next to the devstack. Bring the backend up the way its
-own repository documents, create the two monitors and an API token on
-it, then pass its network to the smoke so the devstack joins it.
+own repository documents, create the three monitors and an API token
+on it, then pass its network to the smoke so the devstack joins it.
 
 ```bash
 # 1. Build the plugin zip:
@@ -281,6 +286,7 @@ CRONHEART_BACKEND_NETWORK=<backend-docker-network> \
 CRONHEART_ENDPOINT=<http://backend-host-on-that-network> \
 HEARTBEAT_UUID=<heartbeat-uuid> \
 EVENT_UUID=<event-uuid> \
+FAIL_EVENT_UUID=<failing-event-uuid> \
 CRONHEART_API_TOKEN=<throwaway-api-token> \
 CRONHEART_ALLOW_INSECURE_TOKEN=1 \
     ./devstack/smoke.sh

@@ -31,7 +31,7 @@ Cronheart turns WP-Cron into a **dead-man switch**: the plugin pings [cronheart.
 
 = Never breaks WP-Cron =
 
-The plugin's hard contract: a broken cronheart backend, an unreachable network, a misbehaving PSR-18 HTTP client — none of them may cause WP-Cron to fail. Every network / HTTP error is swallowed into a logged warning. If cronheart goes down for a day, your `wp_schedule_event` callbacks still run normally; you just stop seeing pings on the dashboard.
+The plugin's hard contract: a broken cronheart backend, an unreachable network, a misbehaving PSR-18 HTTP client — none of them may cause WP-Cron to fail. Every network / HTTP error is swallowed; with `WP_DEBUG` and `WP_DEBUG_LOG` on, a ping that still fails after its retries leaves one line in the debug log. If cronheart goes down for a day, your `wp_schedule_event` callbacks still run normally; you just stop seeing pings on the dashboard.
 
 = External services =
 
@@ -90,7 +90,7 @@ Yes. If you set `define( 'DISABLE_WP_CRON', true );` and trigger `wp-cron.php` f
 
 = What if my host blocks outgoing HTTPS? =
 
-The plugin will retry up to twice (three attempts in all, each limited to 3 seconds) and then give up. Your scheduled callbacks still run normally — the plugin never raises an exception that could break the cron runner. A ping that never arrives is not logged on the site; the monitor on cronheart.com reports the missed run.
+The plugin will retry up to twice (three attempts in all, each limited to 3 seconds) and then give up. Your scheduled callbacks still run normally — the plugin never raises an exception that could break the cron runner. The monitor on cronheart.com reports the missed run. With `WP_DEBUG` and `WP_DEBUG_LOG` on, each ping that fails also leaves one line in `wp-content/debug.log` (a ping the service refuses, such as one with a wrong monitor UUID, too), with the reason but without the monitor UUID or the full ping URL.
 
 = Do I need a paid cronheart.com account? =
 
@@ -106,7 +106,7 @@ Sign in at [cronheart.com](https://cronheart.com), open the monitor you created,
 
 = What happens to my scheduled jobs if cronheart.com is unreachable? =
 
-Nothing. The plugin catches every network / HTTP error from the SDK and logs a warning — your `wp_schedule_event` callbacks continue to run. You will stop seeing pings on the cronheart dashboard, and after the configured grace period cronheart sends you the down-alert. When cronheart comes back the next successful ping resolves the incident automatically.
+Nothing. The plugin catches every network / HTTP error from the SDK (and, with `WP_DEBUG` and `WP_DEBUG_LOG` on, writes one line per failed ping to the debug log) — your `wp_schedule_event` callbacks continue to run. You will stop seeing pings on the cronheart dashboard, and after the configured grace period cronheart sends you the down-alert. When cronheart comes back the next successful ping resolves the incident automatically.
 
 = Does the plugin track or report anything about my site? =
 

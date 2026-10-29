@@ -19,6 +19,7 @@ use Cronheart\WP\Cron\EventDiscovery;
 use Cronheart\WP\Hooks\HeartbeatHandler;
 use Cronheart\WP\Hooks\HeartbeatScheduler;
 use Cronheart\WP\Hooks\PerEventInstrumentation;
+use Cronheart\WP\Log\DebugLogLogger;
 use CronMonitor\Client\Configuration;
 
 // Direct-access guard. WP.org's Plugin Check flags every PHP file
@@ -119,6 +120,17 @@ final class Plugin
         $perEvent->register($hookNames);
     }
 
+    private static function buildDebugLogLogger(): DebugLogLogger
+    {
+        return new DebugLogLogger(
+            enabled: static fn (): bool => \defined('WP_DEBUG') && \constant('WP_DEBUG') && \defined('WP_DEBUG_LOG') && \constant('WP_DEBUG_LOG'),
+            write: static function (string $line): void {
+                // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- Not debug code: one redacted line per failed ping, written only while WP_DEBUG and WP_DEBUG_LOG are on.
+                error_log($line);
+            },
+        );
+    }
+
     /**
      * Build the runtime ping client without ever throwing: this runs on every
      * request, so a throw here would take the whole site down. A rejected
@@ -133,7 +145,7 @@ final class Plugin
      */
     private static function buildClient(Resolver $resolver, ?\Closure $createClient = null, ?\Closure $curlLoaded = null): array
     {
-        $createClient ??= static fn (Configuration $configuration): Client => Client::create($configuration);
+        $createClient ??= static fn (Configuration $configuration): Client => Client::create($configuration, self::buildDebugLogLogger());
         $curlLoaded ??= static fn (): bool => \extension_loaded('curl');
 
         try {

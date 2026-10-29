@@ -7,6 +7,7 @@ namespace Cronheart\WP\Api;
 use CronMonitor\Client\Configuration;
 use CronMonitor\Client\CronMonitorClient;
 use CronMonitor\Client\PingResult;
+use Psr\Log\LoggerInterface;
 
 /**
  * Thin façade over the bundled cron-monitor PHP SDK.
@@ -45,8 +46,10 @@ class Client
      * A null SDK client makes every call a no-op that reports a failed
      * ping without sending anything; see {@see disabled()}.
      */
-    private function __construct(private readonly ?CronMonitorClient $sdk)
-    {
+    private function __construct(
+        private readonly ?CronMonitorClient $sdk,
+        private readonly ?LoggerInterface $logger = null,
+    ) {
     }
 
     /**
@@ -54,9 +57,9 @@ class Client
      * curl extension is not loaded; `Plugin::boot()` catches that and falls
      * back to {@see disabled()}.
      */
-    public static function create(Configuration $configuration): self
+    public static function create(Configuration $configuration, ?LoggerInterface $logger = null): self
     {
-        return new self(CronMonitorClient::create($configuration));
+        return new self(CronMonitorClient::create($configuration, $logger), $logger);
     }
 
     public static function disabled(): self
@@ -66,35 +69,35 @@ class Client
 
     public function heartbeat(string $uuid, ?string $body = null): PingResult
     {
-        return $this->safely(static fn (CronMonitorClient $sdk): PingResult => $sdk->heartbeat($uuid, $body));
+        return $this->safely($uuid, null, static fn (CronMonitorClient $sdk): PingResult => $sdk->heartbeat($uuid, $body));
     }
 
     public function start(string $uuid): PingResult
     {
-        return $this->safely(static fn (CronMonitorClient $sdk): PingResult => $sdk->start($uuid));
+        return $this->safely($uuid, 'start', static fn (CronMonitorClient $sdk): PingResult => $sdk->start($uuid));
     }
 
     public function success(string $uuid, ?string $body = null): PingResult
     {
-        return $this->safely(static fn (CronMonitorClient $sdk): PingResult => $sdk->success($uuid, $body));
+        return $this->safely($uuid, 'success', static fn (CronMonitorClient $sdk): PingResult => $sdk->success($uuid, $body));
     }
 
     public function fail(string $uuid, ?string $body = null): PingResult
     {
-        return $this->safely(static fn (CronMonitorClient $sdk): PingResult => $sdk->fail($uuid, $body));
+        return $this->safely($uuid, 'fail', static fn (CronMonitorClient $sdk): PingResult => $sdk->fail($uuid, $body));
     }
 
     /**
      * @param \Closure(CronMonitorClient): PingResult $call
      */
-    private function safely(\Closure $call): PingResult
+    private function safely(string $uuid, ?string $action, \Closure $call): PingResult
     {
         if (null === $this->sdk) {
             return PingResult::failed(null, self::DISABLED_MESSAGE, 0);
         }
 
         try {
-            return $call($this->sdk);
+            $result = $call($this->sdk);
         } catch (\Throwable $error) {
             // The SDK swallows network / HTTP errors already; this
             // catch handles the pathological case where a custom
@@ -102,6 +105,32 @@ class Client
             // no-throw contract. Returning a synthetic failed
             // PingResult keeps the host WP-Cron run intact.
             return PingResult::failed(null, $error->getMessage(), 0);
+        }
+
+        if (!$result->delivered && null !== $result->statusCode && $result->statusCode < 500) {
+            $this->logRejected($uuid, $action, $result);
+        }
+
+        return $result;
+    }
+
+    /**
+     * The SDK logs a ping that fails on the network or with a 5xx after its
+     * last attempt, but returns a 4xx (a wrong or deleted monitor, a plan
+     * limit) or 3xx answer without logging it; this adds the one line for
+     * those. The hash is the SDK's own truncated SHA-256 of the lower-cased
+     * uuid, so both kinds of line name a monitor the same way.
+     */
+    private function logRejected(string $uuid, ?string $action, PingResult $result): void
+    {
+        try {
+            $this->logger?->warning('cron-monitor ping rejected', [
+                'monitor_uuid_hash' => substr(hash('sha256', strtolower($uuid)), 0, 16),
+                'action' => $action,
+                'attempts' => $result->attempts,
+                'last_status' => $result->statusCode,
+            ]);
+        } catch (\Throwable) {
         }
     }
 }

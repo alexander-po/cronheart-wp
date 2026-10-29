@@ -10,8 +10,10 @@ use Cronheart\WP\Api\Client;
 use Cronheart\WP\Api\PingsDisabledReason;
 use Cronheart\WP\Config\Resolver;
 use Cronheart\WP\Hooks\PerEventInstrumentation;
+use Cronheart\WP\Log\DebugLogLogger;
 use Cronheart\WP\Plugin;
 use CronMonitor\Client\Configuration;
+use CronMonitor\Client\CronMonitorClient;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
@@ -282,6 +284,29 @@ final class PluginTest extends TestCase
         (new \ReflectionMethod(Plugin::class, 'registerPerEventHooks'))->invoke(null, $perEvent, $resolver());
 
         self::assertSame([], $added);
+    }
+
+    public function test_the_default_client_and_its_sdk_share_the_debug_log_logger(): void
+    {
+        [$client] = self::buildClient(self::resolverWith([]));
+
+        $logger = (new \ReflectionProperty(Client::class, 'logger'))->getValue($client);
+        $sdk = (new \ReflectionProperty(Client::class, 'sdk'))->getValue($client);
+        self::assertInstanceOf(DebugLogLogger::class, $logger);
+        self::assertInstanceOf(CronMonitorClient::class, $sdk);
+        self::assertSame($logger, (new \ReflectionProperty(CronMonitorClient::class, 'logger'))->getValue($sdk));
+    }
+
+    public function test_the_debug_log_logger_stays_off_without_wp_debug_log(): void
+    {
+        self::assertFalse(\defined('WP_DEBUG_LOG'));
+        $logger = (new \ReflectionMethod(Plugin::class, 'buildDebugLogLogger'))->invoke(null);
+        self::assertInstanceOf(DebugLogLogger::class, $logger);
+
+        $enabled = (new \ReflectionProperty(DebugLogLogger::class, 'enabled'))->getValue($logger);
+
+        self::assertInstanceOf(\Closure::class, $enabled);
+        self::assertFalse($enabled());
     }
 
     public function test_the_account_configuration_keeps_one_retry_and_the_default_timeout(): void
