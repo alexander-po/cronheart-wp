@@ -8,13 +8,13 @@ Stable tag: 0.5.6
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-Dead-man-switch monitoring for WP-Cron. Get alerted when scheduled events stop firing — uptime monitors do not catch this.
+Dead-man-switch monitoring for WP-Cron: a site heartbeat plus start, success and fail pings per event. Get alerted when scheduled jobs stop running.
 
 == Description ==
 
 **WP-Cron is request-driven.** On a low-traffic site no requests arrive, no events fire, and a scheduled backup can be stalled for weeks before anyone notices. Uptime monitors do not catch this — the site responds to HTTPS just fine, it just is not running its jobs.
 
-Cronheart turns WP-Cron into a **dead-man switch**: the plugin pings [cronheart.com](https://cronheart.com) every five minutes and on every individual event you register. If the pings stop, cronheart alerts you via email, Telegram, Slack, Discord, Microsoft Teams, Google Chat, PagerDuty, or a signed webhook.
+Cronheart turns WP-Cron into a **dead-man switch**: the plugin pings [cronheart.com](https://cronheart.com) every five minutes, and sends a `start`, `success` or `fail` ping on every run of each event you register. With an optional API token, its wp-admin screens let you assign monitors to events, pause or snooze them, test your alert channels and read recent pings without leaving WordPress. If the pings stop, cronheart alerts you via email, Telegram, Slack, Discord, Microsoft Teams, Google Chat, PagerDuty, or a signed webhook.
 
 = What it does =
 
@@ -28,6 +28,12 @@ Cronheart turns WP-Cron into a **dead-man switch**: the plugin pings [cronheart.
 * **Channel management.** A Settings → Cronheart Channels screen lists your cronheart.com notification channels and lets you, per channel, send a real test alert through it or — for webhook channels — rotate the signing secret (revealed once). Creating channels stays on cronheart.com; this screen tests and maintains the ones you already have.
 * **Ping & alert history.** A Settings → Cronheart History screen shows the most recent pings (kind, time, runtime) and alerts (kind, time, channels notified) for a monitor you pick (the picker lists up to 200 monitors) — a read-only at-a-glance log without leaving WordPress.
 * **Configuration through `wp-config.php` constants** for production (`CRONHEART_HEARTBEAT_UUID`, `CRONHEART_EVENT_<HOOK>_UUID`), with admin-UI fallback for sites where editing `wp-config.php` is not practical.
+
+= Requirements =
+
+* WordPress 6.0 or later.
+* PHP 8.2 or later with the cURL extension (`curl`), which most hosts enable.
+* A [cronheart.com](https://cronheart.com) account; the free plan is enough. An API token is optional.
 
 = Never breaks WP-Cron =
 
@@ -116,6 +122,10 @@ No. The plugin sends a ping to cronheart only when you have configured a monitor
 
 Yes. Define `CRONHEART_ENDPOINT` in `wp-config.php` with the URL of your alternate deployment. For plain `http://` endpoints (local development, private VPNs without TLS) also set `CRONHEART_ALLOW_INSECURE_ENDPOINT` to `true`. With both unset, the plugin pings the production cronheart.com over HTTPS. The API token is only ever sent over HTTPS, so with a plain `http://` endpoint the settings screens fall back to manual UUID entry while pings keep working. An endpoint the plugin does not accept (one with no `http://` or `https://` scheme, or plain `http://` without `CRONHEART_ALLOW_INSECURE_ENDPOINT`) stops all pings and shows an error notice in wp-admin; the plugin does not send them to cronheart.com instead. An empty `CRONHEART_ENDPOINT` means cronheart.com even when the `cronheart_endpoint` option is set, and a `CRONHEART_ENDPOINT` that is not a string is ignored.
 
+= What does the "Cronheart is not sending pings" notice mean? =
+
+The plugin shows this error notice on every wp-admin screen, to users who can manage options, when it cannot send pings safely; it then sends none. The notice names the cause. If the PHP cURL extension is not loaded on the server, ask your host to enable it. If the endpoint setting is not accepted, the notice says whether `CRONHEART_ENDPOINT` in `wp-config.php` or the `cronheart_endpoint` option holds it: use an `https://` URL (a plain `http://` URL also needs `CRONHEART_ALLOW_INSECURE_ENDPOINT`), or remove the setting to use cronheart.com. Until then your monitors alert that the jobs stopped checking in. The notice cannot be dismissed; it disappears on the next page load after the cause is fixed.
+
 = Where can I report bugs or request features? =
 
 Open an issue on [GitHub](https://github.com/alexander-po/cronheart-wp/issues).
@@ -190,54 +200,34 @@ Open an issue on [GitHub](https://github.com/alexander-po/cronheart-wp/issues).
 * Upgraded the bundled `cron-monitor/php-sdk` to `^1.0`, which adds the authenticated management-API client the picker uses.
 
 = 0.1.9 =
-* Plugin Directory review round 2 fix. `Contributors:` changed from `cronmonitor` to `cronheart` — the reviewer's static analysis pointed out that the WordPress.org account that actually owns the `cronheart` plugin slug (and uploaded every version including v0.1.8) is `cronheart`, not `cronmonitor`. v0.1.7's switch to `cronmonitor` was a wrong guess at the right owner identity; v0.1.9 puts the actual slug owner in the contributors line.
-* No code changes.
+* Directory review fix: `Contributors:` set to the slug owner. No code changes.
 
 = 0.1.8 =
-* Bump "Tested up to" from 6.9 to 7.0. The v0.1.7 re-upload was rejected by WP.org's automated scan because WordPress 7.0 had shipped between our v0.1.5 submission and the v0.1.7 re-upload, and the "Tested up to" header now lagged again. Devstack also moved to `wordpress:7.0-php8.2-apache`; smoke run + Plugin Check re-verified green on 7.0.
-* No code changes.
+* "Tested up to" 7.0. No code changes.
 
 = 0.1.7 =
-* Restored Terms of Service / Privacy policy links in the readme. The URLs the WP.org reviewer flagged as HTTP 404 in v0.1.5 (`cronheart.com/legal/terms`, `cronheart.com/legal/privacy`) were wrong paths — the live pages have always been at `cronheart.com/terms` and `cronheart.com/privacy`. v0.1.6 removed the links entirely as the most cautious response to the review feedback; v0.1.7 puts them back, pointing at the correct URLs (both return HTTP 200).
-* No code changes.
+* Restored the Terms of Service and Privacy policy links. No code changes.
 
 = 0.1.6 =
-* Plugin Directory review round 1 fixes. No behaviour changes — pings, hooks, admin UI all identical to 0.1.5.
-* Removed two `cronheart.com/legal/*` links from the readme that responded with HTTP 404. The "External services" section in this readme already provides a full data-flow disclosure; stand-alone Terms / Privacy pages will be linked back when the corresponding cronheart.com URLs are live.
-* `Contributors:` set to `cronmonitor` (the WordPress.org account that submitted the plugin); previously held a stale GitHub handle (`alexanderpo`) that did not match any WP.org user.
-* Release zip no longer ships `vendor/bin/cron-monitor` or `vendor/cron-monitor/php-sdk/bin/cron-monitor` — those CLI binaries are part of the SDK's local-dev tooling and have no use inside a WordPress plugin. `bin/build-release.sh` now strips every `vendor/*/bin/` directory at zip time. PSR-4 autoload of the SDK's runtime classes is unaffected.
+* Directory review fixes: dead links removed, `Contributors:` corrected, CLI binaries dropped from the zip. No behaviour changes.
 
 = 0.1.5 =
-* Bump "Tested up to" from 6.7 to 6.9. WordPress.org's automated scan blocks submission when the readme's "Tested up to" lags the current stable WordPress release, even when the underlying code is unchanged — the field is treated as a freshness signal for the Plugin Directory search. Devstack also moved to `wordpress:6.9-php8.2-apache`; smoke run + Plugin Check re-verified green on 6.9.
-* No code changes.
+* "Tested up to" 6.9. No code changes.
 
 = 0.1.4 =
-* Pre-submission cleanup before the WordPress.org Plugin Directory review. No behaviour changes — pings, hooks, and admin UI all identical to 0.1.3.
-* Release zip no longer ships `CLAUDE.md` and similar contributor-only docs from vendored packages; the bundled tree is now scoped to what the runtime actually needs.
-* `LICENSE` gained an explicit project copyright header (`cronheart-wp — Copyright (C) 2026 Alexander Palazok`); the GPL-2.0 preamble follows unchanged.
-* CHANGELOG.md hygiene: missing `[0.1.1]` section header restored; internal sprint-tracking term ("Sprint D") removed from the public 0.1.3 entry; stale "deferred to v0.1.1+" notes on vendor namespace prefixing rewritten to reflect the current "deferred pending first reported collision" stance.
+* Release zip trimmed to runtime files, a copyright header in `LICENSE`, changelog cleanup. No behaviour changes.
 
 = 0.1.3 =
-* WordPress.org Plugin Check fixes: added `defined('ABSPATH')` direct-access guards to every PHP file the static analyser reaches; refactored the monitored-events table render so the escape calls are direct printf arguments (the previous pre-assigned variable was flagged by EscapeOutput); shipped `composer.json` / `composer.lock` alongside `vendor/` in the release zip so the bundled dependencies are reproducible.
-* No behaviour changes — pings, hooks, and admin UI all identical to 0.1.2.
+* Plugin Check fixes: direct-access guards and output escaping. No behaviour changes.
 
 = 0.1.2 =
-* WordPress.org submission readiness: full readme.txt (Description, FAQ, Screenshots, External-services disclosure), version bump from 0.1.1.
-* No code changes — pure metadata polish for the Plugin Directory submission.
+* Full readme for the Plugin Directory submission. No code changes.
 
 = 0.1.1 =
-* Endpoint override: `CRONHEART_ENDPOINT` constant and `cronheart_endpoint` option for pointing the plugin at a non-production cronheart deployment (staging, private VPC, local backend).
-* `CRONHEART_ALLOW_INSECURE_ENDPOINT` constant / `cronheart_allow_insecure_endpoint` option to opt into plain `http://` endpoints (required for local backends behind `host.docker.internal` or TLS-less private VPNs; default false).
-* Local end-to-end smoke harness under `devstack/` for verifying the plugin against either production cronheart.com (public contributors) or a local cronheart backend (maintainers).
-* No breaking changes — installs without the new constants keep the v0.1.0 behaviour.
+* Endpoint override (`CRONHEART_ENDPOINT`, `CRONHEART_ALLOW_INSECURE_ENDPOINT`) for staging, private or local deployments.
 
 = 0.1.0 =
-* Initial scaffold (GitHub-only release; WP.org submission deferred to v0.1.2+).
-* Site-wide heartbeat layer with a 5-minute custom schedule.
-* Per-event monitoring with `cronheart_monitor()` helper and `cronheart_monitor_map` filter.
-* `CRONHEART_HEARTBEAT_UUID` and `CRONHEART_EVENT_<HOOK>_UUID` constants for sourcing UUIDs from `wp-config.php`.
-* Admin page at Settings → Cronheart for sites without `wp-config.php` access.
-* PHP fatal-error capture for the fail-ping body.
+* First release: site heartbeat, per-event monitoring through `cronheart_monitor()` and constants, the Settings → Cronheart page, and the PHP fatal error in the fail ping.
 
 == Upgrade Notice ==
 
