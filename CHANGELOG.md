@@ -26,6 +26,7 @@ The plugin no longer breaks a site without the cURL extension or pings a host th
 - An endpoint setting the plugin rejects (one with no `http://` or `https://` scheme, or plain `http://` without `CRONHEART_ALLOW_INSECURE_ENDPOINT`) now stops all pings and shows an error notice in wp-admin, naming whether the `CRONHEART_ENDPOINT` constant or the `cronheart_endpoint` option holds it. Before, pings and the monitor UUIDs in them silently went to cronheart.com instead of the configured host. An empty endpoint setting still means cronheart.com.
 - The plugin's internal `Cronheart\WP\Api\Client` is built with `Client::create()`, which needs a `Configuration`, or `Client::disabled()`; its constructor is private.
 - The development stack's MySQL healthcheck pings over TCP, so the smoke's WordPress install no longer races the database's first start (not part of the plugin zip).
+- The `readme.txt` description is brought up to date: all eight alert channels (Microsoft Teams, Google Chat and PagerDuty were missing), what a `fail` ping's body and the `User-Agent` header contain, the idempotency key the auto-create call sends, WP-CLI runs, the fail-closed notice, the retry rules, the heartbeat hook's real name and where the monitor UUID is on cronheart.com.
 - Bumped the plugin header `Version`, `CRONHEART_VERSION` and `readme.txt` `Stable tag` to `0.5.6`.
 
 ## [0.5.5] — 2026-10-25

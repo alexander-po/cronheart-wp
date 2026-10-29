@@ -14,24 +14,24 @@ Dead-man-switch monitoring for WP-Cron. Get alerted when scheduled events stop f
 
 **WP-Cron is request-driven.** On a low-traffic site no requests arrive, no events fire, and a scheduled backup can be stalled for weeks before anyone notices. Uptime monitors do not catch this — the site responds to HTTPS just fine, it just is not running its jobs.
 
-Cronheart turns WP-Cron into a **dead-man switch**: the plugin pings [cronheart.com](https://cronheart.com) every five minutes and on every individual event you register. If the pings stop, cronheart alerts you via email, Telegram, Slack, Discord, or a custom webhook.
+Cronheart turns WP-Cron into a **dead-man switch**: the plugin pings [cronheart.com](https://cronheart.com) every five minutes and on every individual event you register. If the pings stop, cronheart alerts you via email, Telegram, Slack, Discord, Microsoft Teams, Google Chat, PagerDuty, or a signed webhook.
 
 = What it does =
 
 * **Site heartbeat.** A 5-minute custom WP-Cron event whose only job is to ping cronheart. Proves WP-Cron itself is alive on this site.
 * **Per-event monitoring.** Register any scheduled hook for start / success / fail pings with one PHP one-liner: `cronheart_monitor( 'my_nightly_report', 'xxxxxxxx-…' );`
-* **PHP fatal-error capture.** When a scheduled callback fatals or throws, the fail-ping body includes the `error_get_last()` summary — the cronheart dashboard shows the cause without you tailing `debug.log`.
+* **PHP fatal-error capture.** When a scheduled callback fatals or throws, the fail-ping body includes the `error_get_last()` summary — the cronheart dashboard shows the cause without you tailing `debug.log`. This holds for runs through a page request, `wp-cron.php`, `ALTERNATE_WP_CRON` and WP-CLI's `wp cron event run`.
 * **Settings page.** A read-only "Monitored events" table at Settings → Cronheart shows every hook the plugin is watching and where its UUID came from (constant, option, filter).
 * **Monitor picker.** Save a cronheart.com API token and the site heartbeat field becomes a dropdown of your account's monitors instead of a hand-typed UUID. Entirely optional — without a token you paste the UUID as before, and any API hiccup falls back to that field. The token is write-only and never leaves wp-admin.
 * **Account overview and monitor management.** With a token configured, Settings → Cronheart shows your plan and monitor budget, and a "Your monitors" table listing each monitor with its status and any active snooze. From that table you can pause, resume, snooze (1 hour, 4 hours, 1 day, or 1 week), or unsnooze a monitor; the change applies on cronheart.com immediately. Every action is an authenticated administrator request — nothing happens without your click.
-* **Per-event monitoring UI.** A new Settings → Cronheart Events screen lists the recurring WP-Cron events on your site and lets you, per event, either assign one of your monitors from a dropdown or auto-create an interval monitor for it in one click — no code required. This is the point-and-click alternative to the `cronheart_monitor()` helper and `CRONHEART_EVENT_<HOOK>_UUID` constants, which still work. A constant overrides an assignment made on this screen; an assignment made on this screen overrides the helper.
+* **Per-event monitoring UI.** A Settings → Cronheart Events screen lists the recurring WP-Cron events on your site and lets you, per event, either assign one of your monitors from a dropdown or auto-create an interval monitor for it in one click — no code required. This is the point-and-click alternative to the `cronheart_monitor()` helper and `CRONHEART_EVENT_<HOOK>_UUID` constants, which still work. A constant overrides an assignment made on this screen; an assignment made on this screen overrides the helper.
 * **Channel management.** A Settings → Cronheart Channels screen lists your cronheart.com notification channels and lets you, per channel, send a real test alert through it or — for webhook channels — rotate the signing secret (revealed once). Creating channels stays on cronheart.com; this screen tests and maintains the ones you already have.
 * **Ping & alert history.** A Settings → Cronheart History screen shows the most recent pings (kind, time, runtime) and alerts (kind, time, channels notified) for a monitor you pick (the picker lists up to 200 monitors) — a read-only at-a-glance log without leaving WordPress.
 * **Configuration through `wp-config.php` constants** for production (`CRONHEART_HEARTBEAT_UUID`, `CRONHEART_EVENT_<HOOK>_UUID`), with admin-UI fallback for sites where editing `wp-config.php` is not practical.
 
 = Never breaks WP-Cron =
 
-The plugin's hard contract: a broken cronheart backend, an unreachable network, a misbehaving PSR-18 HTTP client — none of them may cause WP-Cron to fail. Every network / HTTP error is swallowed; with `WP_DEBUG` and `WP_DEBUG_LOG` on, a ping that still fails after its retries leaves one line in the debug log. If cronheart goes down for a day, your `wp_schedule_event` callbacks still run normally; you just stop seeing pings on the dashboard.
+The plugin's hard contract: a broken cronheart backend, an unreachable network, a misbehaving PSR-18 HTTP client — none of them may cause WP-Cron to fail. Every network / HTTP error is swallowed; with `WP_DEBUG` and `WP_DEBUG_LOG` on, a ping that fails leaves one line in the debug log. A third-party filter that throws while the plugin reads its settings is caught too. If cronheart goes down for a day, your `wp_schedule_event` callbacks still run normally; you just stop seeing pings on the dashboard. When the plugin cannot send pings safely (the PHP cURL extension is missing, or the endpoint setting is one it does not accept), it sends none and shows an error notice in wp-admin instead.
 
 = External services =
 
@@ -40,17 +40,17 @@ This plugin sends HTTP requests to [cronheart.com](https://cronheart.com) in two
 **1. Monitoring pings (front end / WP-Cron).** Sent on every scheduled WP-Cron run, but **only when you supply a monitor UUID**. The exact data sent per ping:
 
 * The per-monitor UUID you configured (path segment).
-* A short body excerpt — capped at 10 KB — containing either an exception summary (for `fail` pings) or nothing (for `start` / `success` / `heartbeat`).
-* The plugin / SDK version in a `User-Agent` header.
+* A short body — capped at 10 KB — that is empty for `start` / `success` / `heartbeat` pings. For a `fail` ping it holds the PHP error type, the file path and line, and the message of the fatal error or uncaught exception, or a one-line note that the event did not complete.
+* The bundled SDK's name and version in a `User-Agent` header (for example `cron-monitor-php-sdk/1.9`).
 
 **2. Account management (wp-admin only).** When — and only when — you save a cronheart.com API token, the **Cronheart admin screens** (Settings → Cronheart, Settings → Cronheart Events, Settings → Cronheart Channels, and Settings → Cronheart History) talk to the cronheart.com management API at `https://cronheart.com/api/v1/...`. Every such request carries the token as an `Authorization: Bearer` header and runs **only while a logged-in administrator is on one of those screens** — and, for the write actions below, only when that administrator clicks the control. Never on the front end, during WP-Cron, or in any other context. No token, no request. The calls are:
 
 * **Read your monitors** — `GET /api/v1/monitors` — to populate the heartbeat picker, the "Your monitors" table, the per-event assignment dropdowns, and the Cronheart History monitor picker. Sends nothing beyond the token and paging parameters.
 * **Read your account** — `GET /api/v1/account` — to show your plan, monitor budget, and API rate-limit standing. Sends nothing beyond the token.
 * **Lifecycle actions** — `POST /api/v1/monitors/<uuid>/pause` (or `/resume`, `/snooze`, `/unsnooze`) — sent when you click a pause / resume / snooze / unsnooze button. Sends the monitor's UUID (in the path) and the action; snooze also sends the chosen duration (1 hour, 4 hours, 1 day, or 1 week).
-* **Create a monitor** — `POST /api/v1/monitors` — sent when you click "Auto-create & assign" for a recurring event on the Cronheart Events screen. Sends the event's hook name (as the monitor name), its schedule as an interval in seconds, the site timezone, and a grace period — all derived from the WP-Cron schedule.
+* **Create a monitor** — `POST /api/v1/monitors` — sent when you click "Auto-create & assign" for a recurring event on the Cronheart Events screen. Sends the event's hook name (as the monitor name), its schedule as an interval in seconds, the site timezone, and a grace period — all derived from the WP-Cron schedule — plus an idempotency key that is a SHA-256 hash of the site URL and the hook name (the URL itself is not sent), so a repeated click does not create a second monitor.
 * **Read your channels** — `GET /api/v1/channels` — to populate the Cronheart Channels screen. Sends nothing beyond the token.
-* **Send a test alert** — `POST /api/v1/channels/<id>/test` — sent when you click "Send test" on a channel. This **delivers a real notification** to that channel's destination (your configured email, Telegram, Slack, Discord, or webhook), so it is the one management call with an effect outside cronheart.com. Sends only the channel id (in the path).
+* **Send a test alert** — `POST /api/v1/channels/<id>/test` — sent when you click "Send test" on a channel. This **delivers a real notification** to that channel's destination (your configured email, Telegram, Slack, Discord, Microsoft Teams, Google Chat, PagerDuty, or webhook), so it is the one management call with an effect outside cronheart.com. Sends only the channel id (in the path).
 * **Rotate a webhook secret** — `POST /api/v1/channels/<id>/rotate-secret` — sent when you click "Rotate secret" on a webhook channel. cronheart.com mints a new signing secret (shown to you once) and invalidates the previous one. Sends only the channel id (in the path); the new secret is shown in the page and never stored by the plugin.
 * **Read ping & alert history** — `GET /api/v1/monitors/<uuid>/pings` and `GET /api/v1/monitors/<uuid>/alerts` — to populate the Cronheart History screen for the monitor you select. Reads the most recent page only. Sends the monitor's UUID (in the path) and paging parameters.
 
@@ -86,15 +86,15 @@ The hook then emits `start` / `success` (or `fail` on a fatal / thrown exception
 
 = Does this work when WP-Cron is disabled (system-cron mode)? =
 
-Yes. If you set `define( 'DISABLE_WP_CRON', true );` and trigger `wp-cron.php` from a real system cron, the plugin's `heartbeat_tick` action still fires on each run — the trigger mechanism is different, the action chain is the same.
+Yes. If you set `define( 'DISABLE_WP_CRON', true );` and trigger `wp-cron.php` from a real system cron, the plugin's `cronheart_heartbeat_tick` event still fires on each run — the trigger mechanism is different, the action chain is the same. Running events with WP-CLI (`wp cron event run --due-now`) works as well, including the `fail` ping of an event that throws.
 
 = What if my host blocks outgoing HTTPS? =
 
-The plugin will retry up to twice (three attempts in all, each limited to 3 seconds) and then give up. Your scheduled callbacks still run normally — the plugin never raises an exception that could break the cron runner. The monitor on cronheart.com reports the missed run. With `WP_DEBUG` and `WP_DEBUG_LOG` on, each ping that fails also leaves one line in `wp-content/debug.log` (a ping the service refuses, such as one with a wrong monitor UUID, too), with the reason but without the monitor UUID or the full ping URL.
+The plugin will retry up to twice (three attempts in all, each limited to 3 seconds) after a connection error or a server error, then give up; an answer that refuses the ping, such as a wrong monitor UUID, is not retried. Your scheduled callbacks still run normally — the plugin never raises an exception that could break the cron runner. The monitor on cronheart.com reports the missed run. With `WP_DEBUG` and `WP_DEBUG_LOG` on, each ping that fails also leaves one line in `wp-content/debug.log` (a ping the service refuses, such as one with a wrong monitor UUID, too), with the reason but without the monitor UUID or the full ping URL.
 
 = Do I need a paid cronheart.com account? =
 
-No. Cronheart's free tier covers 20 monitors per account — enough for a typical site's heartbeat plus several per-event monitors. Every tier, the free one included, gets all notification channels (email, Telegram, Slack, Discord and signed webhooks). The REST API, which the optional token features in wp-admin use, is included on every tier, the free one too. Paid tiers (Starter / Growth / Scale) raise the monitor cap and the API rate limit.
+No. Cronheart's free tier covers 20 monitors per account — enough for a typical site's heartbeat plus several per-event monitors. Every tier, the free one included, gets all notification channels (email, Telegram, Slack, Discord, Microsoft Teams, Google Chat, PagerDuty and signed webhooks). The REST API, which the optional token features in wp-admin use, is included on every tier, the free one too. Paid tiers (Starter / Growth / Scale) raise the monitor cap and the API rate limit.
 
 = Do I need an API token? =
 
@@ -102,7 +102,7 @@ No — it is entirely optional. Paste a monitor UUID under Settings → Cronhear
 
 = Where do I find my monitor UUID? =
 
-Sign in at [cronheart.com](https://cronheart.com), open the monitor you created, and copy the UUID from the address bar or the "Ping URL" block on the monitor page.
+Sign in at [cronheart.com](https://cronheart.com), open the monitor you created, and copy the UUID shown under its name (it has a copy button), or take it from the address bar or from the end of the monitor's ping URL.
 
 = What happens to my scheduled jobs if cronheart.com is unreachable? =
 
@@ -136,6 +136,7 @@ Open an issue on [GitHub](https://github.com/alexander-po/cronheart-wp/issues).
 * A third-party filter that throws while the plugin reads its monitor settings no longer stops a monitored WP-Cron event's own callbacks, ends the rest of the run, or ends every request; the plugin skips the affected ping instead.
 * The `cronheart_allow_insecure_endpoint` option now reads `false`, `no`, `off` and any unrecognised value as false, like the `CRONHEART_ALLOW_INSECURE_ENDPOINT` constant.
 * With `WP_DEBUG` and `WP_DEBUG_LOG` on, each failed ping writes one line to the debug log, including a ping the service refuses (such as one with a wrong monitor UUID). The line never holds a monitor UUID, an API token or a full URL.
+* The plugin description is brought up to date: all eight alert channels, what a `fail` ping's body and the `User-Agent` header contain, the idempotency key of the auto-create call, WP-CLI runs, the retry rules and where to find a monitor's UUID.
 
 = 0.5.5 =
 * A monitored WP-Cron event that throws or hits a fatal error now sends its `fail` ping when it is run with `wp cron event run` (including `--due-now`), as hosts that drive WP-Cron from a system cron through WP-CLI do. Before, WordPress's own fatal-error handling ended the WP-CLI process before the plugin could send it, so the monitor received a `start` and no `fail` and stayed up. Runs through a page request, `wp-cron.php` or `ALTERNATE_WP_CRON` already sent it. The `fail` is sent once, and the WP-CLI command's output and exit code are unchanged.
