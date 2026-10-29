@@ -6,6 +6,10 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.6] — 2026-10-29
+
+The plugin no longer breaks a site without the cURL extension or pings a host the operator did not configure, a throwing third-party filter no longer breaks a WP-Cron run, and a failed ping can be traced in the debug log.
+
 ### Added
 
 - With `WP_DEBUG` and `WP_DEBUG_LOG` on, a ping that fails writes one line to the PHP error log (`wp-content/debug.log` by default), whether it could not reach the service after its attempts or the service refused it (a wrong or deleted monitor UUID, a plan limit): the action, the attempt count, the last HTTP status or error and a short hash of the monitor UUID. The line never carries a monitor UUID, an API token or a full URL (a URL is cut to its scheme and host). Nothing is logged otherwise. `composer.json` now requires `psr/log` (`^2.0 || ^3.0`), which the bundled SDK already depends on.
@@ -21,6 +25,9 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 - An endpoint setting the plugin rejects (one with no `http://` or `https://` scheme, or plain `http://` without `CRONHEART_ALLOW_INSECURE_ENDPOINT`) now stops all pings and shows an error notice in wp-admin, naming whether the `CRONHEART_ENDPOINT` constant or the `cronheart_endpoint` option holds it. Before, pings and the monitor UUIDs in them silently went to cronheart.com instead of the configured host. An empty endpoint setting still means cronheart.com.
 - The plugin's internal `Cronheart\WP\Api\Client` is built with `Client::create()`, which needs a `Configuration`, or `Client::disabled()`; its constructor is private.
+- The development stack's MySQL healthcheck pings over TCP, so the smoke's WordPress install no longer races the database's first start (not part of the plugin zip).
+- The `readme.txt` description is brought up to date: all eight alert channels (Microsoft Teams, Google Chat and PagerDuty were missing), what a `fail` ping's body and the `User-Agent` header contain, the idempotency key the auto-create call sends, WP-CLI runs, the fail-closed notice, the retry rules, the heartbeat hook's real name and where the monitor UUID is on cronheart.com.
+- Bumped the plugin header `Version`, `CRONHEART_VERSION` and `readme.txt` `Stable tag` to `0.5.6`.
 
 ## [0.5.5] — 2026-10-25
 
