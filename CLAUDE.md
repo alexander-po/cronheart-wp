@@ -28,7 +28,7 @@ The plugin is published on Packagist as `cronheart/wp` and on the
 WordPress.org Plugin Directory at
 [`wordpress.org/plugins/cronheart/`](https://wordpress.org/plugins/cronheart/)
 (approved after a multi-round review; `docs/wporg-submission.md` keeps
-what we hit on the way). PHP ≥ 8.2, WordPress ≥ 6.0.
+what we hit on the way). PHP ≥ 8.2 with ext-curl, WordPress ≥ 6.0.
 
 ## The plugin, the SDK and the service
 
@@ -71,8 +71,18 @@ Concrete:
 - `Hooks\PerEventInstrumentation` registers a shutdown handler so that
   a fatal `wp_die()` or PHP error inside the wrapped hook still produces
   a `fail` ping with an `error_get_last()` summary in the body.
-- All hook callbacks swallow errors into a logged warning. We never
-  re-throw upward.
+- `Plugin::boot()` builds the ping client through `buildClient()`,
+  which never throws: a missing curl extension or an endpoint the SDK's
+  `Configuration` rejects yields `Client::disabled()` (sends nothing)
+  and a wp-admin notice, never a fallback to cronheart.com.
+- Every lookup that runs third-party option or filter code on a
+  non-admin path (the `plugins_loaded` hook enumeration, the per-event
+  uuid lookups) sits inside its own `try/catch \Throwable`.
+- All hook callbacks swallow errors. We never re-throw upward. A failed
+  ping leaves one redacted line in the debug log while `WP_DEBUG` and
+  `WP_DEBUG_LOG` are on (`Log\DebugLogLogger`): never a uuid, a token
+  or a full URL, and the class keeps `log()`'s `$message` untyped so it
+  loads under another plugin's psr/log 1.x.
 
 If you add a new bridge or hook, mirror this. New files that call the
 SDK must have at least one test that simulates a thrown SDK error and
@@ -196,14 +206,16 @@ care about.
 
 `devstack/` carries a docker-compose harness for end-to-end smoke runs.
 Both modes run the same `devstack/smoke.sh`: it brings the stack up,
-fires the heartbeat tick and a test per-event hook, and, when
-`CRONHEART_API_TOKEN` is set, reads both monitors' ping history through
+fires the heartbeat tick and two test per-event hooks (one throws), and, when
+`CRONHEART_API_TOKEN` is set, reads each monitor's ping history through
 the public REST API (`GET /api/v1/monitors/<uuid>/pings`) — once in a
 one-off container before the stack starts, so a bad token or UUID fails
 in seconds, and again after the run, up to five reads three seconds
 apart. It fails unless the heartbeat monitor gained a `heartbeat`
-ping and the per-event monitor a `start` and a `success`; pings on any
-other monitor cannot make it pass. The public repo never names the backend's schema,
+ping, the per-event monitor a `start` and a `success`, and the
+failing-event monitor (`FAIL_EVENT_UUID`, a hook that throws, run with
+`wp cron event run`, which must exit non-zero) a `start` and exactly
+one `fail`; pings on any other monitor cannot make it pass. The public repo never names the backend's schema,
 credentials or compose internals: everything backend-specific is an
 input (`CRONHEART_ENDPOINT`, `CRONHEART_BACKEND_NETWORK`, the UUIDs,
 the token).
@@ -213,8 +225,8 @@ the token).
 Pings real `cronheart.com`. Public, doesn't require backend access.
 
 ```bash
-HEARTBEAT_UUID=<uuid> EVENT_UUID=<uuid> CRONHEART_API_TOKEN=<token> \
-    ./devstack/smoke.sh
+HEARTBEAT_UUID=<uuid> EVENT_UUID=<uuid> FAIL_EVENT_UUID=<uuid> \
+CRONHEART_API_TOKEN=<token> ./devstack/smoke.sh
 ```
 
 Without the token the script prints what to check on the dashboard
@@ -227,12 +239,13 @@ Joins the WordPress + wp-cli containers to a backend's Docker network
 and points the plugin at it. Run the backend as an isolated compose
 project of its own, never the backend checkout's default project, so
 the run shares no database or network with other sessions, and create
-the two monitors and an API token on it first.
+the three monitors and an API token on it first.
 
 ```bash
 CRONHEART_BACKEND_NETWORK=<backend-docker-network> \
 CRONHEART_ENDPOINT=<http://backend-host-on-that-network> \
-HEARTBEAT_UUID=<uuid> EVENT_UUID=<uuid> CRONHEART_API_TOKEN=<throwaway-token> \
+HEARTBEAT_UUID=<uuid> EVENT_UUID=<uuid> FAIL_EVENT_UUID=<uuid> \
+CRONHEART_API_TOKEN=<throwaway-token> \
 CRONHEART_ALLOW_INSECURE_TOKEN=1 ./devstack/smoke.sh
 ```
 
@@ -516,10 +529,11 @@ For each new version bump:
 6. Plugin Check in devstack: `wp plugin check cronheart` →
    `Success: Checks complete. No errors found.`
 7. **Real end-to-end smoke (mode B)**: `./devstack/smoke.sh` with
-   `CRONHEART_ENDPOINT`, `HEARTBEAT_UUID`, `EVENT_UUID` and
-   `CRONHEART_API_TOKEN` for two monitors on an isolated local backend
-   — must end with the new heartbeat / start / success pings + green
-   check.
+   `CRONHEART_ENDPOINT`, `HEARTBEAT_UUID`, `EVENT_UUID`,
+   `FAIL_EVENT_UUID` and `CRONHEART_API_TOKEN` for three monitors on an
+   isolated local backend — must end with the new heartbeat / start /
+   success pings, the failing hook's start and single fail, and the
+   green check.
 8. Squash to single commit. Author / committer identity =
    `Alexander Palazok <alexander-po@users.noreply.github.com>`. No
    `Co-Authored-By` trailers.
