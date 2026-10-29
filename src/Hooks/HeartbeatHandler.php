@@ -18,8 +18,10 @@ use Cronheart\WP\Config\Resolver;
  *     signal), do nothing — the user opted out for this environment.
  *   - Otherwise, dispatch a `heartbeat` ping. The host job receives
  *     the failure outcome through `PingResult` but we intentionally
- *     do not act on it: heartbeat is fire-and-forget. The SDK
- *     already logs swallowed transport errors at warning level.
+ *     do not act on it: heartbeat is fire-and-forget. A ping
+ *     that still fails after its retries is written to the PHP error
+ *     log while `WP_DEBUG` and `WP_DEBUG_LOG` are on (see
+ *     `Log\DebugLogLogger`).
  *
  * The whole method is wrapped in `try/catch \Throwable` defensively —
  * the SDK's no-throw contract should hold, but a pathological

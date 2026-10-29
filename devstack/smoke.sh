@@ -6,8 +6,10 @@
 #
 # # Inputs
 #
-#     HEARTBEAT_UUID, EVENT_UUID   two monitors created for this run
-#                                  (heartbeat + a test per-event hook).
+#     HEARTBEAT_UUID, EVENT_UUID, FAIL_EVENT_UUID
+#                                  three monitors created for this run:
+#                                  the heartbeat, a test per-event hook
+#                                  that succeeds, and one that throws.
 #     CRONHEART_ENDPOINT           backend URL as seen from the WP
 #                                  containers; defaults to
 #                                  https://cronheart.com. Anything but
@@ -19,12 +21,15 @@
 #                                  and joins it. Pass it per run rather
 #                                  than exporting it.
 #     CRONHEART_API_TOKEN          optional. When set, the script reads
-#                                  both monitors' ping history through
+#                                  each monitor's ping history through
 #                                  the public REST API before the stack
 #                                  starts, so a bad token or UUID fails
 #                                  fast, and fails unless this run's
-#                                  pings arrived. Without it, verify on
-#                                  the dashboard by hand.
+#                                  pings arrived: a heartbeat, a start
+#                                  and a success, and a start and exactly
+#                                  one fail for the throwing hook.
+#                                  Without it, verify on the dashboard by
+#                                  hand.
 #     CRONHEART_ALLOW_INSECURE_TOKEN=1
 #                                  lets the token travel to a non-https
 #                                  endpoint; use it only with a
@@ -36,8 +41,8 @@
 #
 # # Example
 #
-#     HEARTBEAT_UUID=<uuid> EVENT_UUID=<uuid> CRONHEART_API_TOKEN=<token> \
-#         ./devstack/smoke.sh
+#     HEARTBEAT_UUID=<uuid> EVENT_UUID=<uuid> FAIL_EVENT_UUID=<uuid> \
+#         CRONHEART_API_TOKEN=<token> ./devstack/smoke.sh
 
 set -euo pipefail
 
@@ -49,10 +54,10 @@ case "$CRONHEART_ENDPOINT" in
     *) CRONHEART_ALLOW_INSECURE="true" ;;
 esac
 
-if [ -z "${HEARTBEAT_UUID:-}" ] || [ -z "${EVENT_UUID:-}" ]; then
-    echo "HEARTBEAT_UUID and EVENT_UUID are required." >&2
-    echo "Create two monitors on the backend and re-run:" >&2
-    echo "  HEARTBEAT_UUID=<uuid> EVENT_UUID=<uuid> [CRONHEART_API_TOKEN=<token>] ./devstack/smoke.sh" >&2
+if [ -z "${HEARTBEAT_UUID:-}" ] || [ -z "${EVENT_UUID:-}" ] || [ -z "${FAIL_EVENT_UUID:-}" ]; then
+    echo "HEARTBEAT_UUID, EVENT_UUID and FAIL_EVENT_UUID are required." >&2
+    echo "Create three monitors on the backend and re-run:" >&2
+    echo "  HEARTBEAT_UUID=<uuid> EVENT_UUID=<uuid> FAIL_EVENT_UUID=<uuid> [CRONHEART_API_TOKEN=<token>] ./devstack/smoke.sh" >&2
     exit 2
 fi
 
@@ -74,6 +79,7 @@ ADMIN_USER="admin"
 ADMIN_PASSWORD="admin"
 ADMIN_EMAIL="admin@example.test"
 EVENT_HOOK="cronheart_smoke_event"
+FAIL_EVENT_HOOK="cronheart_smoke_fail_event"
 POLL_ATTEMPTS=5
 POLL_INTERVAL_SECONDS=3
 WORDPRESS_WAIT_SECONDS=60
@@ -135,9 +141,10 @@ count_kind() {
 log "Smoke run against $CRONHEART_ENDPOINT${CRONHEART_BACKEND_NETWORK:+, joined to Docker network $CRONHEART_BACKEND_NETWORK}"
 
 if [ -n "${CRONHEART_API_TOKEN:+x}" ]; then
-    log "Reading both monitors' ping history before the stack starts"
+    log "Reading the three monitors' ping history before the stack starts"
     HEARTBEAT_BEFORE=$(list_pings "$HEARTBEAT_UUID") || fail "Could not read the heartbeat monitor's pings. Check the endpoint, the token and the UUID."
     EVENT_BEFORE=$(list_pings "$EVENT_UUID") || fail "Could not read the per-event monitor's pings. Check the endpoint, the token and the UUID."
+    FAIL_EVENT_BEFORE=$(list_pings "$FAIL_EVENT_UUID") || fail "Could not read the failing event monitor's pings. Check the endpoint, the token and the UUID."
 fi
 
 log "Starting WordPress + MySQL + WP-CLI"
@@ -167,6 +174,7 @@ log "Installing WordPress (idempotent — skips if already installed)"
 log "Setting cronheart constants in wp-config.php"
 "${WPCLI[@]}" config set CRONHEART_HEARTBEAT_UUID "$HEARTBEAT_UUID" --type=constant --allow-root
 "${WPCLI[@]}" config set "CRONHEART_EVENT_$(echo "$EVENT_HOOK" | tr '[:lower:]' '[:upper:]')_UUID" "$EVENT_UUID" --type=constant --allow-root
+"${WPCLI[@]}" config set "CRONHEART_EVENT_$(echo "$FAIL_EVENT_HOOK" | tr '[:lower:]' '[:upper:]')_UUID" "$FAIL_EVENT_UUID" --type=constant --allow-root
 "${WPCLI[@]}" config set CRONHEART_ENDPOINT "$CRONHEART_ENDPOINT" --type=constant --allow-root
 "${WPCLI[@]}" config set CRONHEART_ALLOW_INSECURE_ENDPOINT "$CRONHEART_ALLOW_INSECURE" --type=constant --raw --allow-root
 
@@ -174,9 +182,9 @@ log "Setting cronheart constants in wp-config.php"
 log "Installing plugin from zip"
 "${WPCLI[@]}" plugin install /tmp/cronheart.zip --force --activate --allow-root
 
-# ── 4. Drop a mu-plugin that registers the per-event monitor and
-#       schedules a test event for the smoke run.
-log "Dropping mu-plugin that registers a per-event monitor + schedules a test event"
+# ── 4. Drop a mu-plugin that registers the per-event monitors and
+#       schedules the two test events for the smoke run.
+log "Dropping mu-plugin that registers two per-event monitors + schedules their test events"
 "${COMPOSE[@]}" exec -T wordpress mkdir -p /var/www/html/wp-content/mu-plugins
 "${COMPOSE[@]}" exec -T wordpress sh -c "cat > /var/www/html/wp-content/mu-plugins/cronheart-smoke.php <<'PHP'
 <?php
@@ -186,6 +194,7 @@ log "Dropping mu-plugin that registers a per-event monitor + schedules a test ev
 add_action( 'plugins_loaded', static function (): void {
     if ( function_exists( 'cronheart_monitor' ) ) {
         cronheart_monitor( '${EVENT_HOOK}' ); // UUID comes from CRONHEART_EVENT_… constant
+        cronheart_monitor( '${FAIL_EVENT_HOOK}' );
     }
 }, 1 );
 
@@ -194,10 +203,16 @@ add_action( '${EVENT_HOOK}', static function (): void {
     error_log( 'cronheart-smoke: ${EVENT_HOOK} fired successfully' );
 }, 10, 0 );
 
-if ( ! wp_next_scheduled( '${EVENT_HOOK}' ) ) {
-    wp_schedule_event( time(), 'hourly', '${EVENT_HOOK}' );
+add_action( '${FAIL_EVENT_HOOK}', static function (): void {
+    throw new RuntimeException( 'cronheart-smoke: ${FAIL_EVENT_HOOK} failed on purpose' );
+}, 10, 0 );
+
+foreach ( array( '${EVENT_HOOK}', '${FAIL_EVENT_HOOK}' ) as \$cronheart_smoke_hook ) {
+    if ( ! wp_next_scheduled( \$cronheart_smoke_hook ) ) {
+        wp_schedule_event( time(), 'hourly', \$cronheart_smoke_hook );
+    }
 }
-PHP" || warn "mu-plugin write failed; per-event step will be skipped"
+PHP" || fail "Could not write the smoke mu-plugin."
 
 # Re-trigger plugin bootstrap so the mu-plugin's add_action lands.
 "${WPCLI[@]}" cache flush --allow-root >/dev/null 2>&1 || true
@@ -209,20 +224,39 @@ log "Firing heartbeat tick"
 log "Firing test event (${EVENT_HOOK})"
 "${WPCLI[@]}" cron event run "$EVENT_HOOK" --allow-root || warn "test event run reported failure"
 
+log "Firing the failing test event (${FAIL_EVENT_HOOK}); WP-CLI must report the failure"
+[ "$("${WPCLI[@]}" cron event list --hook="$FAIL_EVENT_HOOK" --format=count --allow-root)" -ge 1 ] \
+    || fail "The failing test event is not scheduled."
+if "${WPCLI[@]}" cron event run "$FAIL_EVENT_HOOK" --allow-root; then
+    fail "The failing test event exited 0; its callback did not throw."
+fi
+
 # ── 6. Verify pings ──────────────────────────────────────────────────
 if [ -n "${CRONHEART_API_TOKEN:+x}" ]; then
-    log "Reading both monitors' ping history (up to $POLL_ATTEMPTS reads, ${POLL_INTERVAL_SECONDS}s apart)"
+    log "Reading the three monitors' ping history (up to $POLL_ATTEMPTS reads, ${POLL_INTERVAL_SECONDS}s apart)"
     attempt=1
+    settled=0
     while :; do
         HEARTBEAT_AFTER=$(list_pings "$HEARTBEAT_UUID") || fail "Could not re-read the heartbeat monitor's pings."
         EVENT_AFTER=$(list_pings "$EVENT_UUID") || fail "Could not re-read the per-event monitor's pings."
+        FAIL_EVENT_AFTER=$(list_pings "$FAIL_EVENT_UUID") || fail "Could not re-read the failing event monitor's pings."
         HEARTBEAT_NEW=$(new_pings "$HEARTBEAT_BEFORE" "$HEARTBEAT_AFTER")
         EVENT_NEW=$(new_pings "$EVENT_BEFORE" "$EVENT_AFTER")
+        FAIL_EVENT_NEW=$(new_pings "$FAIL_EVENT_BEFORE" "$FAIL_EVENT_AFTER")
         HEARTBEAT_FOUND=$(count_kind "$HEARTBEAT_NEW" heartbeat)
         START_FOUND=$(count_kind "$EVENT_NEW" start)
         SUCCESS_FOUND=$(count_kind "$EVENT_NEW" success)
-        if { [ "$HEARTBEAT_FOUND" -ge 1 ] && [ "$START_FOUND" -ge 1 ] && [ "$SUCCESS_FOUND" -ge 1 ]; } \
-            || [ "$attempt" -ge "$POLL_ATTEMPTS" ]; then
+        FAIL_START_FOUND=$(count_kind "$FAIL_EVENT_NEW" start)
+        FAIL_FOUND=$(count_kind "$FAIL_EVENT_NEW" fail)
+        FAIL_SUCCESS_FOUND=$(count_kind "$FAIL_EVENT_NEW" success)
+        # Once every expected ping is in, read once more an interval later,
+        # so a duplicate fail or a late success still lands before the
+        # exact counts below are asserted.
+        if [ "$HEARTBEAT_FOUND" -ge 1 ] && [ "$START_FOUND" -ge 1 ] && [ "$SUCCESS_FOUND" -ge 1 ] \
+            && [ "$FAIL_START_FOUND" -ge 1 ] && [ "$FAIL_FOUND" -ge 1 ]; then
+            [ "$settled" -eq 1 ] && break
+            settled=1
+        elif [ "$attempt" -ge "$POLL_ATTEMPTS" ]; then
             break
         fi
         attempt=$((attempt + 1))
@@ -233,13 +267,19 @@ if [ -n "${CRONHEART_API_TOKEN:+x}" ]; then
     echo "${HEARTBEAT_NEW:-(none)}"
     log "New pings on the per-event monitor ($EVENT_UUID):"
     echo "${EVENT_NEW:-(none)}"
+    log "New pings on the failing event monitor ($FAIL_EVENT_UUID):"
+    echo "${FAIL_EVENT_NEW:-(none)}"
 
     echo
     echo "Heartbeat pings: $HEARTBEAT_FOUND (expected ≥1)"
     echo "Per-event start pings: $START_FOUND (expected ≥1)"
     echo "Per-event success pings: $SUCCESS_FOUND (expected ≥1)"
+    echo "Failing event start pings: $FAIL_START_FOUND (expected ≥1)"
+    echo "Failing event fail pings: $FAIL_FOUND (expected exactly 1)"
+    echo "Failing event success pings: $FAIL_SUCCESS_FOUND (expected 0)"
 
-    if [ "$HEARTBEAT_FOUND" -lt 1 ] || [ "$START_FOUND" -lt 1 ] || [ "$SUCCESS_FOUND" -lt 1 ]; then
+    if [ "$HEARTBEAT_FOUND" -lt 1 ] || [ "$START_FOUND" -lt 1 ] || [ "$SUCCESS_FOUND" -lt 1 ] \
+        || [ "$FAIL_START_FOUND" -lt 1 ] || [ "$FAIL_FOUND" -ne 1 ] || [ "$FAIL_SUCCESS_FOUND" -ne 0 ]; then
         fail "Smoke verification failed — expected pings missing. See output above."
     fi
 
@@ -248,9 +288,9 @@ if [ -n "${CRONHEART_API_TOKEN:+x}" ]; then
 else
     cat <<EOF
 
-The plugin has driven a heartbeat tick + a per-event run against
+The plugin has driven a heartbeat tick + two per-event runs against
 $CRONHEART_ENDPOINT. To verify the pings arrived, open the
-cronheart dashboard and inspect the two monitors corresponding to:
+cronheart dashboard and inspect the three monitors corresponding to:
 
   - Heartbeat UUID: $HEARTBEAT_UUID
                     → expect 1 ping of kind 'heartbeat' within the
@@ -258,6 +298,9 @@ cronheart dashboard and inspect the two monitors corresponding to:
   - Per-event UUID: $EVENT_UUID
                     → expect 2 pings, kind 'start' then 'success',
                       within the last few seconds.
+  - Failing event UUID: $FAIL_EVENT_UUID
+                    → expect 2 pings, kind 'start' then exactly one
+                      'fail', within the last few seconds.
 
 If those pings did not arrive, check:
   - The WordPress debug log:

@@ -21,7 +21,8 @@
     "require": {
         "php": ">=8.2",
         "ext-curl": "*",
-        "cron-monitor/php-sdk": "^1.9"
+        "cron-monitor/php-sdk": "^1.9",
+        "psr/log": "^2.0 || ^3.0"
     },
     "require-dev": {
         "phpunit/phpunit": "^10.5.20",

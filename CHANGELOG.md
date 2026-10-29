@@ -6,6 +6,11 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- With `WP_DEBUG` and `WP_DEBUG_LOG` on, a ping that fails writes one line to the PHP error log (`wp-content/debug.log` by default), whether it could not reach the service after its attempts or the service refused it (a wrong or deleted monitor UUID, a plan limit): the action, the attempt count, the last HTTP status or error and a short hash of the monitor UUID. The line never carries a monitor UUID, an API token or a full URL (a URL is cut to its scheme and host). Nothing is logged otherwise. `composer.json` now requires `psr/log` (`^2.0 || ^3.0`), which the bundled SDK already depends on.
+- The development smoke (`devstack/smoke.sh`, not part of the plugin zip) needs a third monitor, `FAIL_EVENT_UUID`, for a test hook that throws. It checks that `wp cron event run` fails for it and that its monitor gets a `start` and exactly one `fail`.
+
 ### Fixed
 
 - A server without the PHP cURL extension no longer gets a fatal error on every request. The plugin then sends no pings and shows an error notice in wp-admin to users who can manage options. `composer.json` now requires `ext-curl`.
