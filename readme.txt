@@ -4,7 +4,7 @@ Tags: cron, wp-cron, monitoring, healthcheck, deadman-switch
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 8.2
-Stable tag: 0.5.6
+Stable tag: 0.5.7
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -140,6 +140,9 @@ Open an issue on [GitHub](https://github.com/alexander-po/cronheart-wp/issues).
 
 == Changelog ==
 
+= 0.5.7 =
+* A third-party cron filter that throws no longer stops `wp plugin activate` or `deactivate`, and no longer leaves a wrong `current_action()` for a monitored event's own callbacks.
+
 = 0.5.6 =
 * A server without the PHP cURL extension no longer gets a fatal error on every request. The plugin then sends no pings and shows an error notice in wp-admin to users who can manage options.
 * An endpoint setting the plugin rejects (no `http://` or `https://` scheme, or plain `http://` without `CRONHEART_ALLOW_INSECURE_ENDPOINT`) now stops all pings and shows an error notice in wp-admin naming the constant or option that holds it. Before, the pings and the monitor UUIDs in them went to cronheart.com instead of the configured host.
@@ -230,6 +233,9 @@ Open an issue on [GitHub](https://github.com/alexander-po/cronheart-wp/issues).
 * First release: site heartbeat, per-event monitoring through `cronheart_monitor()` and constants, the Settings → Cronheart page, and the PHP fatal error in the fail ping.
 
 == Upgrade Notice ==
+
+= 0.5.7 =
+A throwing third-party cron filter no longer stops plugin activation or deactivation.
 
 = 0.5.6 =
 An endpoint setting the plugin does not accept now stops pings, with an error notice in wp-admin, instead of sending them to cronheart.com. Also: no fatal error without the cURL extension, and failed pings in the debug log.

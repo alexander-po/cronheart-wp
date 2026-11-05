@@ -6,6 +6,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.7] — 2026-11-05
+
 ### Fixed
 
 - A third-party cron filter that throws no longer stops `wp plugin activate` or `deactivate`; the plugin logs one line to the debug log instead (while `WP_DEBUG` and `WP_DEBUG_LOG` are on).
