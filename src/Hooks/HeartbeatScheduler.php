@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Cronheart\WP\Hooks;
 
+use Cronheart\WP\Plugin;
+
 /**
  * Registers and maintains the site-level heartbeat WP-Cron event that
  * the plugin uses to prove "WP-Cron is still firing on this site".
@@ -60,8 +62,12 @@ final class HeartbeatScheduler
      */
     public static function activate(): void
     {
-        if (false === wp_next_scheduled(self::TICK_HOOK)) {
-            wp_schedule_event(time(), self::SCHEDULE_SLUG, self::TICK_HOOK);
+        try {
+            if (false === wp_next_scheduled(self::TICK_HOOK)) {
+                wp_schedule_event(time(), self::SCHEDULE_SLUG, self::TICK_HOOK);
+            }
+        } catch (\Throwable $e) {
+            self::logFailure('could not schedule the heartbeat', $e);
         }
     }
 
@@ -73,6 +79,22 @@ final class HeartbeatScheduler
      */
     public static function deactivate(): void
     {
-        wp_clear_scheduled_hook(self::TICK_HOOK);
+        try {
+            wp_clear_scheduled_hook(self::TICK_HOOK);
+        } catch (\Throwable $e) {
+            self::logFailure('could not clear the heartbeat schedule', $e);
+        }
+    }
+
+    /**
+     * Third-party cron filters run inside these calls; a throw from one must
+     * not abort `wp plugin activate` or `deactivate`.
+     */
+    private static function logFailure(string $message, \Throwable $e): void
+    {
+        try {
+            Plugin::buildDebugLogLogger()->error($message, ['error' => $e::class]);
+        } catch (\Throwable) {
+        }
     }
 }

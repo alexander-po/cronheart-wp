@@ -120,7 +120,7 @@ final class Plugin
         $perEvent->register($hookNames);
     }
 
-    private static function buildDebugLogLogger(): DebugLogLogger
+    public static function buildDebugLogLogger(): DebugLogLogger
     {
         return new DebugLogLogger(
             enabled: static fn (): bool => \defined('WP_DEBUG') && \constant('WP_DEBUG') && \defined('WP_DEBUG_LOG') && \constant('WP_DEBUG_LOG'),
@@ -224,9 +224,32 @@ final class Plugin
             // the native type for `allowInsecureEndpoint()` which
             // accepts `define('…', true)` directly.
             constantReader: static fn (string $name) => \defined($name) ? \constant($name) : null,
-            optionReader: static fn (string $name) => get_option($name, null),
-            filterApplier: static fn (string $name, array $value) => apply_filters($name, $value),
+            optionReader: static fn (string $name) => self::keepingFilterStack(static fn () => get_option($name, null)),
+            filterApplier: static fn (string $name, array $value) => self::keepingFilterStack(static fn () => apply_filters($name, $value)),
         );
+    }
+
+    /**
+     * A throw that crosses `apply_filters()` leaves its hook name on the
+     * `$wp_current_filter` stack; the callers catch it and carry on, so the
+     * job's own callbacks would then read the wrong `current_action()`.
+     *
+     * @param \Closure(): mixed $call
+     */
+    private static function keepingFilterStack(\Closure $call): mixed
+    {
+        $stack = $GLOBALS['wp_current_filter'] ?? null;
+        $depth = \is_array($stack) ? \count($stack) : null;
+
+        try {
+            return $call();
+        } catch (\Throwable $e) {
+            if (null !== $depth && \is_array($GLOBALS['wp_current_filter'] ?? null)) {
+                $GLOBALS['wp_current_filter'] = \array_slice($GLOBALS['wp_current_filter'], 0, $depth);
+            }
+
+            throw $e;
+        }
     }
 
     /**
