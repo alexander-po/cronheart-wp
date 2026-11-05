@@ -286,6 +286,38 @@ final class PluginTest extends TestCase
         self::assertSame([], $added);
     }
 
+    public function test_a_throwing_filter_leaves_the_current_filter_stack_at_its_depth_and_rethrows(): void
+    {
+        $GLOBALS['wp_current_filter'] = ['cronheart_job'];
+        Functions\when('apply_filters')->alias(static function (): never {
+            $GLOBALS['wp_current_filter'][] = 'cronheart_event_map';
+
+            throw new \RuntimeException('filter failed');
+        });
+        Functions\when('get_option')->alias(static function (): never {
+            $GLOBALS['wp_current_filter'][] = 'option_cronheart';
+
+            throw new \RuntimeException('option failed');
+        });
+        $resolver = (new \ReflectionMethod(Plugin::class, 'buildResolver'))->invoke(null);
+        self::assertInstanceOf(Resolver::class, $resolver);
+
+        foreach (['filterApplier' => [Resolver::EVENT_MAP_FILTER, []], 'optionReader' => ['cronheart_option']] as $property => $arguments) {
+            $closure = (new \ReflectionProperty(Resolver::class, $property))->getValue($resolver);
+            self::assertInstanceOf(\Closure::class, $closure);
+
+            try {
+                $closure(...$arguments);
+                self::fail($property.' swallowed the throw');
+            } catch (\RuntimeException) {
+            }
+
+            self::assertSame(['cronheart_job'], $GLOBALS['wp_current_filter'], $property);
+        }
+
+        unset($GLOBALS['wp_current_filter']);
+    }
+
     public function test_the_default_client_and_its_sdk_share_the_debug_log_logger(): void
     {
         [$client] = self::buildClient(self::resolverWith([]));

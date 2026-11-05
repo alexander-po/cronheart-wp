@@ -6,6 +6,11 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- A third-party cron filter that throws no longer stops `wp plugin activate` or `deactivate`; the plugin logs one line to the debug log instead (while `WP_DEBUG` and `WP_DEBUG_LOG` are on).
+- A throwing filter caught while the plugin reads its monitor settings no longer leaves a wrong `current_action()` for the job's own callbacks.
+
 ## [0.5.6] — 2026-10-29
 
 The plugin no longer breaks a site without the cURL extension or pings a host the operator did not configure, a throwing third-party filter no longer breaks a WP-Cron run, and a failed ping can be traced in the debug log.
