@@ -57,6 +57,7 @@ final class SetupNoticeTest extends TestCase
             $html = $this->render(new SetupNotice($this->resolver(null)));
 
             self::assertStringContainsString('Cronheart is installed.', $html, $id);
+            self::assertStringContainsString('To finish setup: create a free account, add a monitor and paste its UUID, so you hear about it when WP-Cron stops.', $html, $id);
             self::assertStringContainsString('href="'.Links::REGISTER.'"', $html, $id);
             self::assertStringContainsString('options-general.php?page=cronheart', $html, $id);
             self::assertStringContainsString('/wp-admin/'.('plugins' === $id ? 'plugins.php' : 'index.php').'?cronheart_dismiss_setup=1&_wpnonce=nonce-for-cronheart_dismiss_setup', $html, $id);

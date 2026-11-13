@@ -60,7 +60,7 @@ final class SetupNotice
         printf(
             '<div class="notice notice-info"><p><strong>%1$s</strong> %2$s <a href="%3$s">%4$s</a> &middot; <a href="%5$s" target="_blank" rel="noopener noreferrer">%6$s</a> &middot; <a href="%7$s">%8$s</a></p></div>',
             esc_html__('Cronheart is installed.', 'cronheart'),
-            esc_html__('One step left: create a free account, add a monitor and paste its UUID, so you hear about it when WP-Cron stops.', 'cronheart'),
+            esc_html__('To finish setup: create a free account, add a monitor and paste its UUID, so you hear about it when WP-Cron stops.', 'cronheart'),
             esc_url(admin_url('options-general.php?page='.SettingsPage::MENU_SLUG)),
             esc_html__('Set up Cronheart', 'cronheart'),
             esc_url(Links::REGISTER),
