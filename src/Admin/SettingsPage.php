@@ -162,6 +162,26 @@ final class SettingsPage
         add_action('admin_menu', [$this, 'add_menu']);
         add_action('admin_init', [$this, 'register_settings']);
         add_action('admin_enqueue_scripts', [$this, 'enqueue_assets']);
+
+        if ('' !== $this->pluginFile) {
+            add_filter('plugin_action_links_'.plugin_basename($this->pluginFile), [self::class, 'action_links']);
+        }
+    }
+
+    /**
+     * @param array<int|string, string> $links
+     *
+     * @return array<int|string, string>
+     */
+    public static function action_links(array $links): array
+    {
+        $settings = \sprintf(
+            '<a href="%1$s">%2$s</a>',
+            esc_url(admin_url('options-general.php?page='.self::MENU_SLUG)),
+            esc_html__('Settings', 'cronheart')
+        );
+
+        return [$settings, ...$links];
     }
 
     public function add_menu(): void
@@ -563,6 +583,19 @@ final class SettingsPage
             'Cronheart sends a heartbeat ping every 5 minutes to prove WP-Cron is still firing on this site. Paste the per-monitor UUID from your cronheart.com dashboard below.',
             'cronheart'
         ).'</p>';
+
+        if (!\defined(Resolver::HEARTBEAT_CONSTANT) && '' === (string) get_option(Resolver::HEARTBEAT_OPTION, '')) {
+            printf(
+                '<ol><li><a href="%1$s" target="_blank" rel="noopener noreferrer">%2$s</a></li><li>%3$s</li><li>%4$s</li></ol><p class="description">%5$s <a href="%6$s" target="_blank" rel="noopener noreferrer">%7$s</a></p>',
+                esc_url(Links::REGISTER),
+                esc_html__('Create a free cronheart.com account.', 'cronheart'),
+                esc_html__('Add a monitor for this site that expects a ping every 5 minutes, and copy its UUID.', 'cronheart'),
+                esc_html__('Paste the UUID below and save. The first heartbeat is sent on the next WP-Cron run.', 'cronheart'),
+                esc_html__('Stuck? Read the guide:', 'cronheart'),
+                esc_url(Links::GUIDE),
+                esc_html__('Monitor WordPress cron with Cronheart', 'cronheart')
+            );
+        }
 
         if (\defined(Resolver::HEARTBEAT_CONSTANT)) {
             echo '<p><strong>'.esc_html__(

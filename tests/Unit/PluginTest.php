@@ -6,6 +6,8 @@ namespace Cronheart\WP\Tests\Unit;
 
 use Brain\Monkey;
 use Brain\Monkey\Functions;
+use Cronheart\WP\Admin\PingsDisabledNotice;
+use Cronheart\WP\Admin\SetupNotice;
 use Cronheart\WP\Api\Client;
 use Cronheart\WP\Api\PingsDisabledReason;
 use Cronheart\WP\Config\Resolver;
@@ -210,18 +212,62 @@ final class PluginTest extends TestCase
         }
         Functions\when('get_option')->alias(static fn (string $name, mixed $default = false): mixed => Resolver::ENDPOINT_OPTION === $name ? 'http://cronheart.example.test' : $default);
 
+        $noticeClasses = $this->recordAdminNoticeClasses();
+
         (new Plugin())->boot();
 
-        self::assertTrue(has_action('admin_notices'));
+        self::assertContains(PingsDisabledNotice::class, $noticeClasses());
+    }
+
+    public function test_boot_wires_the_setup_notice_and_the_first_heartbeat(): void
+    {
+        Functions\when('get_option')->alias(static fn (string $name, mixed $default = false): mixed => $default);
+        $hooks = [];
+        $noticeClasses = [];
+        Functions\when('add_action')->alias(static function (string $hook, mixed $callback) use (&$hooks, &$noticeClasses): bool {
+            $hooks[] = $hook;
+            if ('admin_notices' === $hook && \is_array($callback) && \is_object($callback[0])) {
+                $noticeClasses[] = $callback[0]::class;
+            }
+
+            return true;
+        });
+
+        (new Plugin())->boot();
+
+        self::assertContains(SetupNotice::class, $noticeClasses);
+        self::assertContains('add_option_cronheart_heartbeat_uuid', $hooks);
+        self::assertContains('update_option_cronheart_heartbeat_uuid', $hooks);
     }
 
     public function test_boot_registers_no_notice_for_a_valid_endpoint(): void
     {
         Functions\when('get_option')->alias(static fn (string $name, mixed $default = false): mixed => $default);
 
+        $noticeClasses = $this->recordAdminNoticeClasses();
+
         (new Plugin())->boot();
 
-        self::assertFalse(has_action('admin_notices'));
+        self::assertNotContains(PingsDisabledNotice::class, $noticeClasses());
+    }
+
+    /**
+     * @return \Closure(): list<string>
+     */
+    private function recordAdminNoticeClasses(): \Closure
+    {
+        $classes = [];
+        Functions\when('add_action')->alias(static function (string $hook, mixed $callback) use (&$classes): bool {
+            if ('admin_notices' === $hook && \is_array($callback) && \is_object($callback[0])) {
+                $classes[] = $callback[0]::class;
+            }
+
+            return true;
+        });
+
+        return static function () use (&$classes): array {
+            return $classes;
+        };
     }
 
     /**

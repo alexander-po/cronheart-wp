@@ -37,6 +37,20 @@ final class HeartbeatSchedulerTest extends TestCase
         $this->addToAssertionCount(1);
     }
 
+    public function test_deactivation_clears_the_recurring_tick_and_a_queued_first_heartbeat(): void
+    {
+        $cleared = [];
+        Functions\when('wp_clear_scheduled_hook')->alias(static function (string $hook, array $args = []) use (&$cleared): int {
+            $cleared[] = [$hook, $args];
+
+            return 1;
+        });
+
+        HeartbeatScheduler::deactivate();
+
+        self::assertSame([['cronheart_heartbeat_tick', []], ['cronheart_heartbeat_tick', ['first-heartbeat']]], $cleared);
+    }
+
     public function test_a_throwing_cron_filter_does_not_abort_deactivation(): void
     {
         Functions\when('wp_clear_scheduled_hook')->alias(static function (): never {

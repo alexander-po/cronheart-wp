@@ -41,6 +41,46 @@ final class SettingsPageTest extends TestCase
         Monkey\tearDown();
     }
 
+    public function test_action_links_put_the_settings_link_first(): void
+    {
+        Functions\when('esc_url')->returnArg();
+        Functions\when('esc_html__')->returnArg();
+        Functions\when('admin_url')->alias(static fn (string $path): string => 'https://site.example.test/wp-admin/'.$path);
+
+        $links = SettingsPage::action_links(['deactivate' => '<a>Deactivate</a>']);
+
+        self::assertSame('<a href="https://site.example.test/wp-admin/options-general.php?page=cronheart">Settings</a>', $links[0]);
+        self::assertSame('<a>Deactivate</a>', $links['deactivate']);
+    }
+
+    public function test_heartbeat_intro_shows_the_first_run_steps_with_ref_links_until_a_uuid_is_saved(): void
+    {
+        Functions\when('__')->returnArg();
+        Functions\when('esc_html__')->returnArg();
+        Functions\when('esc_url')->returnArg();
+        Functions\when('get_option')->justReturn('');
+
+        ob_start();
+        SettingsPage::render_heartbeat_intro();
+        $html = (string) ob_get_clean();
+
+        self::assertStringContainsString('href="https://cronheart.com/register?ref=wp-plugin"', $html);
+        self::assertStringContainsString('href="https://cronheart.com/guides/monitor-wordpress-cron?ref=wp-plugin"', $html);
+    }
+
+    public function test_heartbeat_intro_hides_the_first_run_steps_once_a_uuid_is_saved(): void
+    {
+        Functions\when('__')->returnArg();
+        Functions\when('esc_html__')->returnArg();
+        Functions\when('get_option')->justReturn(self::VALID_UUID);
+
+        ob_start();
+        SettingsPage::render_heartbeat_intro();
+        $html = (string) ob_get_clean();
+
+        self::assertStringNotContainsString('<ol>', $html);
+    }
+
     public function test_sanitize_uuid_accepts_a_uuid_and_lowercases_it(): void
     {
         $withHexLetters = strtr(self::VALID_UUID, '0', 'f');
@@ -101,6 +141,23 @@ final class SettingsPageTest extends TestCase
         // own assertion counter does not see them. Bump the counter
         // so PHPUnit does not flag the test as risky.
         $this->addToAssertionCount(2);
+    }
+
+    public function test_register_adds_the_plugin_row_settings_link_only_with_a_plugin_file(): void
+    {
+        $filters = [];
+        Functions\when('plugin_basename')->alias(static fn (string $file): string => 'cronheart/cronheart.php');
+        Functions\when('add_filter')->alias(static function (string $hook, callable $callback) use (&$filters): bool {
+            $filters[] = [$hook, $callback];
+
+            return true;
+        });
+
+        $this->buildPage()->register();
+        self::assertSame([], $filters);
+
+        $this->buildPage(pluginFile: '/srv/plugins/cronheart/cronheart.php')->register();
+        self::assertSame([['plugin_action_links_cronheart/cronheart.php', [SettingsPage::class, 'action_links']]], $filters);
     }
 
     public function test_add_menu_registers_options_page_with_manage_options_capability(): void
