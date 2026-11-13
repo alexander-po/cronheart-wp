@@ -11,11 +11,13 @@ use Cronheart\WP\Admin\EventList;
 use Cronheart\WP\Admin\HistoryScreen;
 use Cronheart\WP\Admin\PingsDisabledNotice;
 use Cronheart\WP\Admin\SettingsPage;
+use Cronheart\WP\Admin\SetupNotice;
 use Cronheart\WP\Api\Client;
 use Cronheart\WP\Api\ManagementClient;
 use Cronheart\WP\Api\PingsDisabledReason;
 use Cronheart\WP\Config\Resolver;
 use Cronheart\WP\Cron\EventDiscovery;
+use Cronheart\WP\Hooks\FirstHeartbeat;
 use Cronheart\WP\Hooks\HeartbeatHandler;
 use Cronheart\WP\Hooks\HeartbeatScheduler;
 use Cronheart\WP\Hooks\PerEventInstrumentation;
@@ -102,6 +104,8 @@ final class Plugin
         (new ChannelsScreen($resolver, $managementClientFactory, $pluginFile))->register();
         (new HistoryScreen($resolver, $managementClientFactory))->register();
         (new Ajax($resolver, $managementClientFactory, $eventDiscovery))->register();
+        (new SetupNotice($resolver))->register();
+        (new FirstHeartbeat())->register();
     }
 
     /**

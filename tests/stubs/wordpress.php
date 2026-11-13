@@ -101,6 +101,51 @@ namespace {
         return false;
     }
 
+    /**
+     * @param array<array-key, mixed> $args
+     *
+     * @return bool|\WP_Error
+     */
+    function wp_schedule_single_event(int $timestamp, string $hook, array $args = [], bool $wp_error = false)
+    {
+        return false;
+    }
+
+    function plugin_basename(string $file): string
+    {
+        return $file;
+    }
+
+    function add_query_arg(string $key, string $value, string $url = ''): string
+    {
+        return '';
+    }
+
+    function wp_nonce_url(string $actionurl, string $action): string
+    {
+        return $actionurl;
+    }
+
+    function wp_verify_nonce(string $nonce, string $action): int|false
+    {
+        return false;
+    }
+
+    function get_current_user_id(): int
+    {
+        return 0;
+    }
+
+    function get_user_meta(int $user_id, string $key, bool $single = false): mixed
+    {
+        return '';
+    }
+
+    function update_user_meta(int $user_id, string $meta_key, mixed $meta_value): int|bool
+    {
+        return false;
+    }
+
     function current_user_can(string $capability): bool
     {
         return false;

@@ -6,6 +6,20 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-11-13
+
+### Added
+
+- A setup notice on the Plugins and Dashboard screens, shown to users who can manage options until a heartbeat UUID is saved or defined. Each user can dismiss it; it disappears by itself once a UUID is set.
+- A Settings link on the plugin's row in the Plugins list.
+- First-run steps on Settings → Cronheart while no heartbeat UUID is set.
+- Saving a new heartbeat UUID queues one heartbeat for the next WP-Cron run, so the first ping no longer waits for the five-minute tick. It only schedules a WP-Cron event: nothing is sent while the settings are saved.
+
+### Changed
+
+- Links from the plugin to the cronheart.com signup and WordPress guide carry the `ref=wp-plugin` label.
+- `readme.txt` rewritten around stalled WP-Cron: a shorter description, a four-step setup, an FAQ of what to know before activating, and refreshed screenshots.
+
 ## [0.5.7] — 2026-11-05
 
 ### Fixed

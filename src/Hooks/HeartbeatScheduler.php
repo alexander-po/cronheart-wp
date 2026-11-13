@@ -81,6 +81,7 @@ final class HeartbeatScheduler
     {
         try {
             wp_clear_scheduled_hook(self::TICK_HOOK);
+            wp_clear_scheduled_hook(self::TICK_HOOK, [FirstHeartbeat::TICK_ARG]);
         } catch (\Throwable $e) {
             self::logFailure('could not clear the heartbeat schedule', $e);
         }
